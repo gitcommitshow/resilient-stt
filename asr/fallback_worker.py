@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -22,6 +23,33 @@ DEFAULT_PORT = 8002
 DEFAULT_BASE_URL = f"http://{DEFAULT_HOST}:{DEFAULT_PORT}/v1"
 DEFAULT_MODEL = "Qwen/Qwen3-ASR-0.6B"
 STARTUP_TIMEOUT_SEC = 120.0
+BUSY_WORKER_WAIT_SEC = 120.0
+
+
+def is_tcp_port_open(host: str, port: int, *, timeout_sec: float = 0.5) -> bool:
+    """Return True when something is listening on ``host:port``."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(timeout_sec)
+        return sock.connect_ex((host, port)) == 0
+
+
+def wait_for_existing_worker(
+    base_url: str = DEFAULT_BASE_URL,
+    *,
+    host: str = DEFAULT_HOST,
+    port: int = DEFAULT_PORT,
+    wait_sec: float = BUSY_WORKER_WAIT_SEC,
+    probe_timeout_sec: float = 5.0,
+) -> bool:
+    """Poll until the fallback worker answers probes or the port goes idle."""
+    deadline = time.monotonic() + wait_sec
+    while time.monotonic() < deadline:
+        if probe_asr_endpoint(base_url, timeout_sec=probe_timeout_sec):
+            return True
+        if not is_tcp_port_open(host, port):
+            return False
+        time.sleep(2.0)
+    return probe_asr_endpoint(base_url, timeout_sec=probe_timeout_sec)
 
 
 @dataclass
@@ -100,6 +128,13 @@ def start_fallback_server(
     if not SERVER_SCRIPT.is_file():
         raise FileNotFoundError(f"Worker entrypoint missing: {SERVER_SCRIPT}")
 
+    base_url = f"http://{host}:{port}/v1"
+    if is_tcp_port_open(host, port):
+        raise RuntimeError(
+            f"Cannot bind qwen-asr worker to {host}:{port}: address already in use. "
+            f"Stop the process on that port or wait for the current job to finish."
+        )
+
     cmd = [
         str(py),
         str(SERVER_SCRIPT),
@@ -128,7 +163,6 @@ def start_fallback_server(
         text=True,
         bufsize=1,
     )
-    base_url = f"http://{host}:{port}/v1"
     deadline = time.monotonic() + STARTUP_TIMEOUT_SEC
     while time.monotonic() < deadline:
         if proc.poll() is not None:

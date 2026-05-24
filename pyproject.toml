@@ -29,6 +29,17 @@ diarization = [
 dev = [
     "pytest>=8",
 ]
+# Silero VAD (MIT) — Qwen3-ASR-Toolkit default; requires torch.
+silero = [
+    "silero-vad>=5.1",
+    "torch>=2.8,<3; platform_machine != 'x86_64' or sys_platform != 'darwin'",
+]
+# Silero VAD + pyannote diarization + torch (typical Apple Silicon / Linux setup).
+full = [
+    "silero-vad>=5.1",
+    "pyannote.audio>=4.0,<5; platform_machine != 'x86_64' or sys_platform != 'darwin'",
+    "torch>=2.8,<3; platform_machine != 'x86_64' or sys_platform != 'darwin'",
+]
 
 [project.scripts]
 resilient-stt = "orchestrator.main:cli"

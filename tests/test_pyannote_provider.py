@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-pytest.importorskip("torch")
+torch = pytest.importorskip("torch")
 
 from diarization.pyannote_provider import load_pyannote_audio  # noqa: E402
 
@@ -24,7 +24,7 @@ def test_load_pyannote_audio_mono(tmp_path: Path) -> None:
 
     assert payload["sample_rate"] == sr
     assert payload["waveform"].shape == (1, sr)
-    assert payload["waveform"].dtype.name == "float32"
+    assert payload["waveform"].dtype == torch.float32
 
 
 def test_load_pyannote_audio_stereo(tmp_path: Path) -> None:

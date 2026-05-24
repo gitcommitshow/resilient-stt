@@ -8,11 +8,15 @@ from dataclasses import dataclass, field
 
 from asr.fallback_worker import (
     DEFAULT_BASE_URL as FALLBACK_BASE_URL,
+    DEFAULT_HOST as FALLBACK_HOST,
     DEFAULT_MODEL as FALLBACK_MODEL,
+    DEFAULT_PORT as FALLBACK_PORT,
     FallbackServerHandle,
     install_worker_deps,
+    is_tcp_port_open,
     start_fallback_server,
     stop_fallback_server,
+    wait_for_existing_worker,
     worker_deps_installed,
 )
 from asr.probe import probe_asr_endpoint
@@ -21,6 +25,8 @@ logger = logging.getLogger("resilient_stt.asr_discovery")
 
 DEFAULT_VLLM_BASE_URL = "http://127.0.0.1:8001/v1"
 DEFAULT_VLLM_MODEL = "Qwen/Qwen3-ASR-1.7B"
+# Local CPU/MPS inference can exceed 10 min for long clips; avoid premature HTTP retries.
+LOCAL_ASR_TIMEOUT_SEC = 7200.0
 
 
 @dataclass
@@ -96,6 +102,26 @@ def resolve_asr(
             "No ASR endpoint configured and none detected on "
             f"{DEFAULT_VLLM_BASE_URL} or {FALLBACK_BASE_URL}. "
             "Pass --asr-endpoint or allow fallback (default)."
+        )
+
+    if is_tcp_port_open(FALLBACK_HOST, FALLBACK_PORT):
+        logger.info(
+            "Port %d is in use; waiting for existing qwen-asr worker at %s …",
+            FALLBACK_PORT,
+            FALLBACK_BASE_URL,
+        )
+        if wait_for_existing_worker(FALLBACK_BASE_URL, host=FALLBACK_HOST, port=FALLBACK_PORT):
+            model = asr_model or FALLBACK_MODEL
+            logger.info("Using existing local qwen-asr worker at %s", FALLBACK_BASE_URL)
+            return ResolvedASR(
+                base_url=FALLBACK_BASE_URL,
+                model=model,
+                provider_label="qwen-transformers-local",
+                source="fallback-existing",
+            )
+        raise RuntimeError(
+            f"Port {FALLBACK_HOST}:{FALLBACK_PORT} is in use but {FALLBACK_BASE_URL} "
+            "did not respond. Stop the stale worker on that port and retry."
         )
 
     model = asr_model or FALLBACK_MODEL

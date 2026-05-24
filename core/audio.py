@@ -18,6 +18,22 @@ class FFmpegNotFoundError(RuntimeError):
     """Raised when ffmpeg is not on PATH."""
 
 
+# Defaults tuned for steady low-frequency background noise (e.g. fan/cooler hum).
+ENHANCE_HIGHPASS_HZ = 80
+ENHANCE_AFFTDN_NF = -25
+ENHANCE_LOUDNORM = "I=-16:TP=-1.5:LRA=11"
+
+
+def build_enhance_audio_filter(
+    *,
+    highpass_hz: int = ENHANCE_HIGHPASS_HZ,
+    afftdn_nf: int = ENHANCE_AFFTDN_NF,
+    loudnorm: str = ENHANCE_LOUDNORM,
+) -> str:
+    """Return an ffmpeg ``-af`` chain: rumble cut, FFT denoise, loudness norm."""
+    return f"highpass=f={highpass_hz},afftdn=nf={afftdn_nf},loudnorm={loudnorm}"
+
+
 def _require_ffmpeg() -> str:
     path = shutil.which("ffmpeg")
     if not path:
@@ -31,8 +47,13 @@ def normalize_audio(
     input_path: str | Path,
     output_path: str | Path,
     sample_rate: int = 16000,
+    *,
+    enhance_audio: bool = False,
 ) -> Path:
     """Decode `input_path` to mono PCM WAV at `sample_rate` Hz.
+
+    When ``enhance_audio`` is True, apply a high-pass + FFT denoise + loudnorm
+    chain before resampling (helps steady fan/cooler noise and quiet speech).
 
     Returns the resolved output path. Overwrites any existing file at the
     destination so repeat runs are deterministic.
@@ -51,15 +72,21 @@ def normalize_audio(
         "-y",
         "-i",
         str(src),
-        "-ac",
-        "1",
-        "-ar",
-        str(sample_rate),
-        "-vn",
-        "-f",
-        "wav",
-        str(dst),
     ]
+    if enhance_audio:
+        cmd.extend(["-af", build_enhance_audio_filter()])
+    cmd.extend(
+        [
+            "-ac",
+            "1",
+            "-ar",
+            str(sample_rate),
+            "-vn",
+            "-f",
+            "wav",
+            str(dst),
+        ]
+    )
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg failed (rc={result.returncode}): {result.stderr.strip()}")

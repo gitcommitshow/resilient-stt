@@ -12,9 +12,9 @@ faster-whisper wrapper, Parakeet wrapper, etc.).
 
 ```
 Audio input
-  -> ffmpeg normalize (mono 16 kHz WAV)
-  -> VAD (skip silent regions)
-  -> chunk speech regions (60s / 2s overlap when long)
+  -> ffmpeg normalize (mono 16 kHz WAV; optional --enhance-audio)
+  -> VAD (Silero if installed, else webrtcvad / RMS; skip silent regions)
+  -> chunk speech regions (fixed: 60s/2s overlap; or pause-aligned: ~120s at onsets)
   -> ASR microservice calls (OpenAI-compatible)
   -> normalize + stitch global timestamps
   -> pyannote diarization on the full normalized audio
@@ -40,7 +40,8 @@ cd resilient-stt
 uv venv
 
 # 2) Install dependencies into .venv
-uv sync --extra diarization --extra dev
+#    --extra full = Silero VAD + diarization + torch (recommended on Apple Silicon / Linux)
+uv sync --extra full --extra dev
 
 # 3) Configure secrets (optional)
 cp .env.example .env
@@ -60,7 +61,8 @@ Activate the venv if you prefer plain `python` without `uv run`:
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 ```
 
-Diarization needs `torch` and `pyannote.audio` 4.x (the `diarization` extra).
+Extras: `silero` (Qwen-aligned VAD), `diarization` (pyannote), `full` (both + torch).
+Without `silero`, VAD falls back to webrtcvad.
 
 ### Platform notes (torch / diarization)
 
@@ -68,8 +70,8 @@ Diarization needs `torch` and `pyannote.audio` 4.x (the `diarization` extra).
 
 | Platform | Install |
 |----------|---------|
-| **Apple Silicon (M1–M4)** | Native arm64 venv, then `uv sync --extra diarization --extra dev`. Optional GPU: `--diarization-device mps` |
-| **Linux** or **Windows** | `uv sync --extra diarization --extra dev` |
+| **Apple Silicon (M1–M4)** | Native arm64 venv, then `uv sync --extra full --extra dev`. Optional GPU: `--diarization-device mps` |
+| **Linux** or **Windows** | `uv sync --extra full --extra dev` |
 | **Intel Mac (x86_64)** | Diarization extra is **not supported** (no compatible torch wheels). Use `uv sync --extra dev` and `--skip-diarization`. |
 
 If `uv` errors mention `x86_64` on an M-series Mac, your Python/venv is Rosetta. Recreate it:
@@ -78,7 +80,7 @@ If `uv` errors mention `x86_64` on an M-series Mac, your Python/venv is Rosetta.
 rm -rf .venv uv.lock
 uv venv --python 3.12
 python -c "import platform; print(platform.machine())"   # must print arm64
-uv sync --extra diarization --extra dev
+uv sync --extra full --extra dev
 ```
 
 Verify MPS after install:
@@ -126,8 +128,12 @@ Useful flags:
 |------|--------|
 | `--no-asr-fallback` | Require explicit/running ASR; do not auto-start qwen-asr on :8002 |
 | `--no-vad` | Disable VAD; transcribe the entire timeline |
+| `--vad-backend` | `auto`, `silero`, `webrtcvad`, or `rms` (default `auto`) |
+| `--chunk-mode` | `fixed` (60s/2s overlap) or `pause-aligned` (~120s at onsets, max 180s) |
+| `--enhance-audio` | High-pass + denoise + loudnorm during normalize |
 | `--skip-diarization` | Skip pyannote; export without speaker labels |
 | `--diarization-model-path PATH` | Load a local `git clone` of the pyannote model (offline) |
+| `--num-speakers` / `--min-speakers` / `--max-speakers` | Hint pyannote speaker count |
 | `--align` | Force the optional alignment stage even when ASR returned timestamps |
 | `--repair true` | Run the LLM repair stage (needs `REPAIR_BASE_URL`/`REPAIR_MODEL`) |
 | `--resume` | Reuse existing intermediates under `data/work/<job_id>/` |
@@ -166,7 +172,7 @@ Each run materializes everything under `data/work/<job_id>/`:
 
 ```
 normalized.wav
-speech_regions.json
+speech_regions.json    # {regions, speech_onsets_samples}
 chunks/                # per-chunk WAV slices
 chunks.json
 asr_raw/<chunk_id>.json

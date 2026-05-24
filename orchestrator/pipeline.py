@@ -10,7 +10,7 @@ from alignment.base import AlignmentProvider, NoOpAligner
 from asr.endpoint_client import ASRProvider, OpenAICompatibleASRProvider
 from asr.router import ASRRouter
 from core.audio import audio_duration, normalize_audio
-from core.chunking import materialize_chunks, plan_chunks
+from core.chunking import materialize_chunks, plan_chunks, plan_chunks_pause_aligned
 from core.exporters import export_all, write_json
 from core.schema import (
     ASRResult,
@@ -23,7 +23,7 @@ from core.schema import (
     TranscriptSegment,
 )
 from core.stitching import stitch_results
-from core.vad import detect_speech_regions, whole_file_region
+from core.vad import analyze_vad, whole_file_region
 from diarization.speaker_assignment import assign_speakers
 from repair.llm_repair import OpenAICompatibleRepairClient, repair_transcript
 
@@ -44,35 +44,69 @@ def _normalize_stage(job: JobConfig) -> Path:
     if job.resume and out.exists():
         logger.info("[normalize] reuse %s", out)
         return out
-    logger.info("[normalize] %s -> %s", job.audio_path, out)
-    return normalize_audio(job.audio_path, out, sample_rate=job.sample_rate)
+    if job.enhance_audio:
+        logger.info("[normalize] %s -> %s (enhance: highpass + afftdn + loudnorm)", job.audio_path, out)
+    else:
+        logger.info("[normalize] %s -> %s", job.audio_path, out)
+    return normalize_audio(
+        job.audio_path,
+        out,
+        sample_rate=job.sample_rate,
+        enhance_audio=job.enhance_audio,
+    )
 
 
-def _vad_stage(job: JobConfig, normalized: Path) -> list[SpeechRegion]:
+def _load_vad_artifact(path: Path) -> tuple[list[SpeechRegion], list[int]]:
+    """Load VAD artifact (supports legacy list-only format)."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(data, list):
+        return [SpeechRegion(**item) for item in data], []
+    regions = [SpeechRegion(**item) for item in data.get("regions", [])]
+    onsets = [int(x) for x in data.get("speech_onsets_samples", [])]
+    return regions, onsets
+
+
+def _vad_stage(job: JobConfig, normalized: Path) -> tuple[list[SpeechRegion], list[int]]:
     artifact = Path(job.work_dir) / "speech_regions.json"
     if job.resume and artifact.exists():
         logger.info("[vad] reuse %s", artifact)
-        data = json.loads(artifact.read_text(encoding="utf-8"))
-        return [SpeechRegion(**item) for item in data]
+        return _load_vad_artifact(artifact)
 
+    speech_onsets: list[int] = []
     if not job.enable_vad:
         regions = [whole_file_region(normalized)]
     else:
-        regions = detect_speech_regions(
-            normalized,
-            pad_ms=job.vad_pad_ms,
-            merge_gap_sec=job.vad_merge_gap_sec,
-            min_speech_sec=job.vad_min_speech_sec,
-        )
+        try:
+            vad = analyze_vad(
+                normalized,
+                pad_ms=job.vad_pad_ms,
+                merge_gap_sec=job.vad_merge_gap_sec,
+                min_speech_sec=job.vad_min_speech_sec,
+                min_speech_duration_ms=job.vad_min_speech_duration_ms,
+                min_silence_duration_ms=job.vad_min_silence_duration_ms,
+                backend=job.vad_backend,
+            )
+        except ImportError as exc:
+            raise RuntimeError(str(exc)) from exc
+        regions = vad.regions
+        speech_onsets = vad.speech_onsets_samples
         if not regions:
             logger.warning("[vad] no speech detected; pipeline will export an empty transcript")
 
-    write_json([r.model_dump() for r in regions], artifact)
-    logger.info("[vad] %d speech region(s)", len(regions))
-    return regions
+    write_json(
+        {"regions": [r.model_dump() for r in regions], "speech_onsets_samples": speech_onsets},
+        artifact,
+    )
+    logger.info("[vad] %d speech region(s), %d onset(s)", len(regions), len(speech_onsets))
+    return regions, speech_onsets
 
 
-def _chunk_stage(job: JobConfig, normalized: Path, regions: list[SpeechRegion]) -> list[ChunkMeta]:
+def _chunk_stage(
+    job: JobConfig,
+    normalized: Path,
+    regions: list[SpeechRegion],
+    speech_onsets: list[int],
+) -> list[ChunkMeta]:
     artifact = Path(job.work_dir) / "chunks.json"
     chunks_dir = Path(job.work_dir) / "chunks"
 
@@ -81,15 +115,39 @@ def _chunk_stage(job: JobConfig, normalized: Path, regions: list[SpeechRegion]) 
         data = json.loads(artifact.read_text(encoding="utf-8"))
         return [ChunkMeta(**item) for item in data]
 
-    planned = plan_chunks(
-        regions,
-        chunk_threshold_sec=job.chunk_threshold_sec,
-        chunk_size_sec=job.chunk_size_sec,
-        chunk_overlap_sec=job.chunk_overlap_sec,
-    )
+    if job.chunk_mode == "pause-aligned":
+        planned = plan_chunks_pause_aligned(
+            regions,
+            speech_onsets,
+            job.sample_rate,
+            segment_threshold_sec=job.chunk_segment_threshold_sec,
+            max_segment_sec=job.chunk_max_segment_sec,
+        )
+        logger.info(
+            "[chunk] pause-aligned mode (target=%.0fs, max=%.0fs)",
+            job.chunk_segment_threshold_sec,
+            job.chunk_max_segment_sec,
+        )
+    else:
+        planned = plan_chunks(
+            regions,
+            chunk_threshold_sec=job.chunk_threshold_sec,
+            chunk_size_sec=job.chunk_size_sec,
+            chunk_overlap_sec=job.chunk_overlap_sec,
+        )
     materialized = materialize_chunks(normalized, planned, chunks_dir)
     write_json([c.model_dump() for c in materialized], artifact)
     logger.info("[chunk] %d ASR chunk(s)", len(materialized))
+    if (
+        job.asr_provider_label == "qwen-transformers-local"
+        and len(materialized) == 1
+        and materialized[0].end_offset - materialized[0].start_offset > 120.0
+    ):
+        logger.warning(
+            "[chunk] Single ASR chunk is %.0fs; local qwen-asr is much faster with "
+            "--chunk-threshold-sec 120 (multiple ~60s windows).",
+            materialized[0].end_offset - materialized[0].start_offset,
+        )
     return materialized
 
 
@@ -132,8 +190,13 @@ def _diarize_stage(job: JobConfig, normalized: Path) -> list[DiarizationTurn]:
         write_json([], artifact)
         return []
 
-    # Local import keeps torch/pyannote optional for `--skip-diarization` runs.
-    from diarization.pyannote_provider import PyannoteDiarizationProvider
+    try:
+        from diarization.pyannote_provider import PyannoteDiarizationProvider
+    except ImportError as exc:
+        raise RuntimeError(
+            "Diarization requires pyannote: uv sync --extra diarization "
+            "(or uv sync --extra full). To skip speaker labels, pass --skip-diarization."
+        ) from exc
 
     provider = PyannoteDiarizationProvider(
         model=job.diarization_model,
@@ -226,8 +289,8 @@ def run(
     normalized = _normalize_stage(job)
     duration = audio_duration(normalized)
 
-    regions = _vad_stage(job, normalized)
-    chunks = _chunk_stage(job, normalized, regions)
+    regions, speech_onsets = _vad_stage(job, normalized)
+    chunks = _chunk_stage(job, normalized, regions, speech_onsets)
 
     provider = asr_provider or OpenAICompatibleASRProvider(
         base_url=job.asr_base_url,

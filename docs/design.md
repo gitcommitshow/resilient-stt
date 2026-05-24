@@ -63,8 +63,8 @@ flowchart TB
 
 **Stage order** (see `orchestrator/pipeline.py`):
 
-1. Normalize → `normalized.wav`
-2. VAD → `speech_regions.json` (unless `--no-vad`)
+1. Normalize → `normalized.wav` (optional `--enhance-audio`: high-pass + denoise + loudnorm)
+2. VAD → `speech_regions.json` `{regions, speech_onsets_samples}` (unless `--no-vad`)
 3. Chunk for ASR only → `chunks/` + `chunks.json`
 4. ASR per chunk → `asr_raw/<chunk_id>.json`
 5. Stitch → global segments/words
@@ -83,13 +83,14 @@ Every stage writes **debuggable artifacts** under `data/work/<job_id>/`.
 
 ```text
 resilient-stt/
-  orchestrator/     # CLI, JobConfig, pipeline.run()
-  core/             # schemas, audio, vad, chunking, stitching, exporters
-  asr/              # ASRProvider + OpenAI-compatible client + normalizer
+  orchestrator/     # CLI, JobConfig, pipeline.run(), asr_discovery
+  core/             # schemas, audio, vad, silero_vad, chunking, stitching, privacy
+  asr/              # ASRProvider, endpoint client, probe, fallback_worker
   diarization/      # pyannote provider + speaker assignment
   alignment/        # AlignmentProvider ABC + NoOp + stubs
   repair/           # LLM repair, prompts, validation
-  workers/          # docs-only ASR microservice placeholders (v1)
+  workers/          # ASR microservices (qwen-transformers implemented; others documented)
+  scripts/          # optional ASR worker bootstrap helpers
   data/             # input / work / output directories
   tests/            # mocked unit tests (no live ffmpeg/pyannote/LLM)
   docs/             # this file
@@ -112,6 +113,10 @@ resilient-stt/
   wrappers without changing orchestrator code.
 - **Abstraction:** `ASRProvider.transcribe(...) -> ASRResult`; router is a
   thin single-provider wrapper today (`asr/router.py`).
+- **Discovery:** When no endpoint is configured, `orchestrator/asr_discovery.py`
+  probes vLLM (`:8001`), then an existing qwen-asr worker (`:8002`), then may
+  auto-start the local transformers worker via `asr/fallback_worker.py`.
+  Orchestrator process still holds no ASR weights — inference runs in the worker subprocess.
 
 ### 5.2 Internal ASR schema with global timestamps
 
@@ -124,20 +129,23 @@ resilient-stt/
 
 ### 5.3 VAD before ASR (speech-only transcription)
 
-- **Decision:** Default **VAD** (`core/vad.py`, webrtcvad + RMS fallback) detects
-  speech regions; **silent audio is not sent to ASR**.
-- **Rationale:** Long files with short speech (e.g. 2 h file, 5 min talk) must
-  not produce hundreds of silent ASR calls.
-- **Escape hatch:** `--no-vad` treats the full timeline as one region (legacy
-  wall-clock behavior).
-- **Diarization unchanged:** Still runs on the **full** `normalized.wav` so
-  speaker identity spans gaps.
+- **Decision:** Default **VAD** (`core/vad.py`) with backend `auto`: **Silero**
+  (Qwen toolkit default, `core/silero_vad.py`) → webrtcvad → RMS energy gate.
+  **Silent audio is not sent to ASR.**
+- **Artifact:** `speech_regions.json` stores merged `regions` plus
+  `speech_onsets_samples` (Silero onsets feed pause-aligned chunking).
+- **Rationale:** Long files with short speech must not produce hundreds of silent ASR calls.
+- **Escape hatch:** `--no-vad` treats the full timeline as one region.
+- **Diarization unchanged:** Still runs on the **full** `normalized.wav`.
 
 ### 5.4 Chunking owned by orchestrator
 
 - **Decision:** Chunking applies **per speech region**, not per wall-clock file.
-- **Threshold:** Region duration ≤ **10 min** → one ASR call; longer regions →
-  **60 s** windows with **2 s** overlap inside the region only.
+- **Modes** (`--chunk-mode`):
+  - **`fixed` (default):** Region ≤ **10 min** → one ASR call; longer → **60 s**
+    windows with **2 s** overlap.
+  - **`pause-aligned`:** Qwen toolkit splits (~**120 s** targets snapped to speech
+    onsets, **180 s** max per chunk; no overlap metadata).
 - **Anti-pattern:** ASR services must **not** implement global chunking or
   cross-chunk timestamp stitching.
 
@@ -201,7 +209,9 @@ resilient-stt/
 | Extra | Packages | Notes |
 |-------|-----------|--------|
 | (core) | pydantic, httpx, numpy, soundfile, webrtcvad, python-dotenv | Always |
+| `silero` | silero-vad, torch ≥ 2.8 | Qwen-aligned VAD; optional on core-only installs |
 | `diarization` | pyannote.audio 4.x, torch ≥ 2.8 | pyannote 4 requires torch ≥ 2.8 |
+| `full` | silero + diarization deps | Typical Apple Silicon / Linux setup |
 | `dev` | pytest | |
 
 - **Python:** `>=3.11,<3.13` (avoids uv resolving unsupported 3.14 splits).
@@ -212,11 +222,14 @@ resilient-stt/
 - **uv:** `[tool.uv] environments` limits lock resolution to arm64-mac / Linux /
   Windows (see `pyproject.toml`).
 
-### 5.12 Workers folder (intentionally empty in v1)
+### 5.12 Workers folder
 
-- **Decision:** `workers/` documents ASR microservice contracts only; no bundled
-  Qwen/Whisper/Parakeet servers in this repo.
-- **Rationale:** Keeps orchestrator lean and deployable without GPU ASR stacks.
+- **Decision:** ASR runs out-of-process. `workers/qwen_transformers_service/`
+  ships a CPU/MPS qwen-asr server; the orchestrator may auto-start it when no
+  endpoint is reachable. vLLM, Whisper, and Parakeet wrappers remain documented
+  placeholders — implement or deploy separately.
+- **Rationale:** Keeps the orchestrator lean while allowing zero-config local runs
+  without NVIDIA GPU.
 
 ---
 
@@ -266,9 +279,10 @@ Do **not**:
 
 ## 8. Testing strategy
 
-- **Max 3 tests** in v1 (project rule): happy path (normalize + stitch + assign),
-  VAD edge (mostly silent file → one short chunk), repair validation rejection.
-- **No live** ffmpeg, pyannote, or LLM in CI — mocks and synthetic WAV only.
+- **Unit tests** under `tests/`: pipeline happy path, VAD/chunking, pause-aligned
+  splits, ASR discovery, repair validation, privacy, audio enhance — mocks and
+  synthetic WAV only.
+- **No live** ffmpeg, pyannote, or LLM in CI.
 - **Entry point for API future:** test `pipeline.run(JobConfig, asr_provider=...)`
   with injected fakes.
 
@@ -279,7 +293,7 @@ Do **not**:
 | Item | Direction |
 |------|-----------|
 | HTTP API | Thin FastAPI/GRPC layer over `pipeline.run(JobConfig)` |
-| ASR workers | Implement `workers/*` as separate deployables |
+| ASR workers | Extend `workers/*` (Whisper/Parakeet stubs remain) |
 | Parallel chunk ASR | Concurrent httpx calls per chunk |
 | Real aligners | Wire `QwenAligner` / WhisperX behind `AlignmentProvider` |
 | Multi-endpoint ASR | Extend `asr/router.py` for routing by language/model |
