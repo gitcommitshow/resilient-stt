@@ -8,7 +8,9 @@ import sys
 
 from core.privacy import disable_dependency_telemetry
 
-from .asr_discovery import resolve_asr
+from asr.endpoint_client import OpenAICompatibleASRProvider
+
+from .asr_discovery import LOCAL_ASR_TIMEOUT_SEC, resolve_asr
 from .config import JobConfig
 from .pipeline import run
 
@@ -50,12 +52,53 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--asr-provider-label", default="external-openai-compatible")
 
     p.add_argument("--no-vad", action="store_true", help="Disable VAD; transcribe entire file.")
+    p.add_argument(
+        "--vad-backend",
+        default="auto",
+        choices=["auto", "silero", "webrtcvad", "rms"],
+        help="VAD backend (auto: silero if installed, else webrtcvad, else rms).",
+    )
     p.add_argument("--vad-pad-ms", type=int, default=250)
     p.add_argument("--vad-merge-gap-sec", type=float, default=0.5)
     p.add_argument("--vad-min-speech-sec", type=float, default=0.3)
+    p.add_argument(
+        "--vad-min-speech-ms",
+        type=int,
+        default=1500,
+        help="Silero: minimum speech segment length (Qwen toolkit default).",
+    )
+    p.add_argument(
+        "--vad-min-silence-ms",
+        type=int,
+        default=500,
+        help="Silero: minimum silence between speech segments.",
+    )
+    p.add_argument(
+        "--chunk-mode",
+        default="fixed",
+        choices=["fixed", "pause-aligned"],
+        help="fixed: overlapping windows; pause-aligned: Qwen toolkit speech-onset splits.",
+    )
     p.add_argument("--chunk-threshold-sec", type=float, default=600.0)
     p.add_argument("--chunk-size-sec", type=float, default=60.0)
     p.add_argument("--chunk-overlap-sec", type=float, default=2.0)
+    p.add_argument(
+        "--chunk-segment-threshold-sec",
+        type=float,
+        default=120.0,
+        help="pause-aligned: target split interval (Qwen toolkit default).",
+    )
+    p.add_argument(
+        "--chunk-max-segment-sec",
+        type=float,
+        default=180.0,
+        help="pause-aligned: hard cap per ASR chunk (Qwen toolkit default).",
+    )
+    p.add_argument(
+        "--enhance-audio",
+        action="store_true",
+        help="High-pass + FFT denoise + loudness norm during normalize (fan/cooler noise, quiet speech).",
+    )
 
     p.add_argument("--skip-diarization", action="store_true")
     p.add_argument("--diarization-model", default="pyannote/speaker-diarization-community-1")
@@ -83,12 +126,19 @@ def _job_from_args(args: argparse.Namespace) -> JobConfig:
         language=args.language,
         prompt=args.prompt,
         enable_vad=not args.no_vad,
+        vad_backend=args.vad_backend,
         vad_pad_ms=args.vad_pad_ms,
         vad_merge_gap_sec=args.vad_merge_gap_sec,
         vad_min_speech_sec=args.vad_min_speech_sec,
+        vad_min_speech_duration_ms=args.vad_min_speech_ms,
+        vad_min_silence_duration_ms=args.vad_min_silence_ms,
+        chunk_mode=args.chunk_mode,
         chunk_threshold_sec=args.chunk_threshold_sec,
         chunk_size_sec=args.chunk_size_sec,
         chunk_overlap_sec=args.chunk_overlap_sec,
+        chunk_segment_threshold_sec=args.chunk_segment_threshold_sec,
+        chunk_max_segment_sec=args.chunk_max_segment_sec,
+        enhance_audio=args.enhance_audio,
         skip_diarization=args.skip_diarization,
         diarization_model=args.diarization_model,
         diarization_model_path=args.diarization_model_path,
@@ -134,8 +184,25 @@ def cli(argv: list[str] | None = None) -> int:
     job.asr_base_url = resolved.base_url
     job.asr_model = resolved.model
     job.asr_provider_label = resolved.provider_label
+    asr_timeout = (
+        LOCAL_ASR_TIMEOUT_SEC
+        if resolved.provider_label == "qwen-transformers-local"
+        else 600.0
+    )
+    asr_provider = OpenAICompatibleASRProvider(
+        base_url=resolved.base_url,
+        api_key=job.asr_api_key,
+        provider_label=resolved.provider_label,
+        timeout=asr_timeout,
+        max_retries=1 if resolved.provider_label == "qwen-transformers-local" else 3,
+    )
+    if resolved.provider_label == "qwen-transformers-local":
+        logging.getLogger("resilient_stt.main").info(
+            "Local qwen-asr: HTTP timeout %.0fs, no retries (long clips are slow on CPU/MPS).",
+            asr_timeout,
+        )
     try:
-        run(job)
+        run(job, asr_provider=asr_provider)
     except Exception as exc:  # noqa: BLE001 - top-level CLI handler
         logging.error("Pipeline failed: %s", exc, exc_info=args.verbose)
         return 1

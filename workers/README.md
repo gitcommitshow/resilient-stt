@@ -1,8 +1,8 @@
 # ASR worker microservices
 
 The orchestrator only talks to ASR through an OpenAI-compatible
-`POST /v1/audio/transcriptions` endpoint. Workers live here as a docs-only
-folder in v1; bring your own.
+`POST /v1/audio/transcriptions` endpoint. One worker is bundled; others are
+documented contracts you can implement separately.
 
 ## Contract
 
@@ -47,16 +47,13 @@ curl -X POST http://localhost:8001/v1/audio/transcriptions \
   -F 'timestamp_granularities[]=word'
 ```
 
-## Placeholders
+## Workers
 
-The directories below are intentional placeholders. Implement each as a
-separate service that satisfies the contract above.
-
+- `qwen_transformers_service/` — **Implemented.** qwen-asr on CPU/MPS; auto-started
+  by the orchestrator or via `python scripts/bootstrap_qwen_asr_fallback.py` (see
+  [qwen_transformers_service/README.md](qwen_transformers_service/README.md)).
 - `qwen_vllm_service/` — Qwen3-ASR via vLLM (Linux + NVIDIA); optional bootstrap:
   `python scripts/bootstrap_vllm_qwen3_asr.py --install` (see
   [qwen_vllm_service/README.md](qwen_vllm_service/README.md)).
-- `qwen_transformers_service/` — qwen-asr on CPU/MPS; auto-started by the orchestrator
-  or manual `python scripts/bootstrap_qwen_asr_fallback.py` (see
-  [qwen_transformers_service/README.md](qwen_transformers_service/README.md)).
-- `parakeet_openai_service/` — Wrap NeMo/Parakeet behind the OpenAI shape.
-- `whisper_openai_service/` — Wrap faster-whisper / whisper.cpp behind the OpenAI shape.
+- `parakeet_openai_service/` — Placeholder: wrap NeMo/Parakeet behind the OpenAI shape.
+- `whisper_openai_service/` — Placeholder: wrap faster-whisper / whisper.cpp behind the OpenAI shape.

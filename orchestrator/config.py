@@ -37,14 +37,21 @@ class JobConfig:
     prompt: str | None = None
 
     enable_vad: bool = True
+    vad_backend: str = "auto"
     vad_pad_ms: int = 250
     vad_merge_gap_sec: float = 0.5
     vad_min_speech_sec: float = 0.3
+    vad_min_speech_duration_ms: int = 1500
+    vad_min_silence_duration_ms: int = 500
 
+    chunk_mode: str = "fixed"
     chunk_threshold_sec: float = 600.0
     chunk_size_sec: float = 60.0
     chunk_overlap_sec: float = 2.0
+    chunk_segment_threshold_sec: float = 120.0
+    chunk_max_segment_sec: float = 180.0
     sample_rate: int = 16000
+    enhance_audio: bool = False
 
     skip_diarization: bool = False
     diarization_model: str = "pyannote/speaker-diarization-community-1"
