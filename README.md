@@ -1,12 +1,10 @@
 # Resilient STT
 
+**The only Speech-To-Text pipeline you need**
+
 [![PyPI](https://img.shields.io/pypi/v/resilient-stt)](https://pypi.org/project/resilient-stt/)
 [![Python](https://img.shields.io/pypi/pyversions/resilient-stt)](https://pypi.org/project/resilient-stt/)
-[![Downloads](https://img.shields.io/pypi/dm/resilient-stt)](https://pypi.org/project/resilient-stt/)
 [![License: GPL v3](https://img.shields.io/github/license/gitcommitshow/resilient-stt)](https://github.com/gitcommitshow/resilient-stt/blob/main/LICENSE)
-[![Status](https://img.shields.io/badge/status-alpha-orange)](https://github.com/gitcommitshow/resilient-stt#note)
-
-**The only Speech-To-Text pipeline you need.**
 
 ![banner](https://raw.githubusercontent.com/gitcommitshow/resilient-stt/refs/heads/main/banner.png)
 
