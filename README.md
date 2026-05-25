@@ -1,10 +1,9 @@
-# resilient-stt
+# Resilient STT (Speech-To-Text)
 
-A local speech transcription pipeline for English, Hindi, and Hinglish audio.
-The orchestrator owns chunking, diarization, repair, and exports; ASR
-inference is **externalized** behind an OpenAI-compatible
-`/v1/audio/transcriptions` endpoint that you choose (vLLM, hosted API,
-faster-whisper wrapper, Parakeet wrapper, etc.).
+A local speech transcription pipeline for English, Hindi, and Hinglish audio.  
+The orchestrator owns chunking, diarization, repair, and exports; ASR inference is **externalized** behind an OpenAI-compatible `/v1/audio/transcriptions` endpoint that you choose (vLLM, hosted APIs including OpenAI and Open Router API, faster-whisper wrapper, Parakeet wrapper, etc.).
+
+> **Experimental:** This project is under active development and is **not production-ready**. Expect breaking changes, incomplete features, and behavior that may shift between releases. Use for evaluation and prototyping only.
 
 **Architecture & design decisions:** [docs/design.md](docs/design.md)
 
@@ -68,11 +67,13 @@ Without `silero`, VAD falls back to webrtcvad.
 
 `pyannote.audio` 4.x requires **torch ≥ 2.8**. On **Apple Silicon** (M1–M4), PyTorch uses the Metal **MPS** backend ([Accelerated PyTorch on Mac](https://developer.apple.com/metal/pytorch/)). Use a **native arm64** Python/venv — not Rosetta x86_64.
 
-| Platform | Install |
-|----------|---------|
-| **Apple Silicon (M1–M4)** | Native arm64 venv, then `uv sync --extra full --extra dev`. Optional GPU: `--diarization-device mps` |
-| **Linux** or **Windows** | `uv sync --extra full --extra dev` |
-| **Intel Mac (x86_64)** | Diarization extra is **not supported** (no compatible torch wheels). Use `uv sync --extra dev` and `--skip-diarization`. |
+
+| Platform                  | Install                                                                                                                  |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **Apple Silicon (M1–M4)** | Native arm64 venv, then `uv sync --extra full --extra dev`. Optional GPU: `--diarization-device mps`                     |
+| **Linux** or **Windows**  | `uv sync --extra full --extra dev`                                                                                       |
+| **Intel Mac (x86_64)**    | Diarization extra is **not supported** (no compatible torch wheels). Use `uv sync --extra dev` and `--skip-diarization`. |
+
 
 If `uv` errors mention `x86_64` on an M-series Mac, your Python/venv is Rosetta. Recreate it:
 
@@ -112,48 +113,92 @@ uv run python -m orchestrator.main \
   --output data/output/meeting
 ```
 
+**OpenAI API (`whisper-1`)** — set `OPENAI_API_KEY` in `.env`, then either
+auto-detect (no local ASR on `:8001`/`:8002`) or point at the API explicitly:
+
+```bash
+# Auto-detect when no local ASR is running (--no-asr-fallback avoids starting qwen-asr)
+uv run python -m orchestrator.main \
+  --audio data/input/speech.wav \
+  --output data/output/openai \
+  --no-asr-fallback \
+  --skip-diarization
+
+# Explicit endpoint
+uv run python -m orchestrator.main \
+  --audio data/input/speech.wav \
+  --output data/output/openai \
+  --asr-endpoint https://api.openai.com/v1 \
+  --model whisper-1 \
+  --skip-diarization
+```
+
+**OpenRouter (`google/chirp-3`)** — set `OPENROUTER_API_KEY` in `.env` or pass
+the key via `ASR_API_KEY`:
+
+```bash
+uv run python -m orchestrator.main \
+  --audio data/input/speech.wav \
+  --output data/output/openrouter/chirp \
+  --asr-endpoint https://openrouter.ai/api/v1 \
+  --model google/chirp-3 \
+  --skip-diarization \
+  --repair false
+```
+
+For music or other non-speech audio, add `--no-vad` so VAD does not skip the
+file. Full flag reference: [docs/cli.md](docs/cli.md).
+
 ### ASR auto-detection
 
 When `--asr-endpoint` is omitted (and `ASR_BASE_URL` / `ASR_ENDPOINT` are unset):
 
 1. Probe **vLLM** at `http://127.0.0.1:8001/v1` ([optional bootstrap](workers/qwen_vllm_service/README.md))
 2. Probe an existing **qwen-asr** worker at `http://127.0.0.1:8002/v1`
-3. Otherwise **start** the local qwen-asr fallback ([workers/qwen_transformers_service/README.md](workers/qwen_transformers_service/README.md)) — slow on CPU/MPS but needs no NVIDIA GPU
+3. **OpenRouter** when `OPENROUTER_API_KEY` is set (no `--model`)
+4. **OpenAI** when `OPENAI_API_KEY` is set (no `--model`)
+5. Otherwise **start** the local qwen-asr fallback ([workers/qwen_transformers_service/README.md](workers/qwen_transformers_service/README.md)) — slow on CPU/MPS but needs no NVIDIA GPU
 
 Use `--no-asr-fallback` to require an explicit or already-running ASR service.
 
 Useful flags:
 
-| Flag | Effect |
-|------|--------|
-| `--no-asr-fallback` | Require explicit/running ASR; do not auto-start qwen-asr on :8002 |
-| `--no-vad` | Disable VAD; transcribe the entire timeline |
-| `--vad-backend` | `auto`, `silero`, `webrtcvad`, or `rms` (default `auto`) |
-| `--chunk-mode` | `fixed` (60s/2s overlap) or `pause-aligned` (~120s at onsets, max 180s) |
-| `--enhance-audio` | High-pass + denoise + loudnorm during normalize |
-| `--skip-diarization` | Skip pyannote; export without speaker labels |
-| `--diarization-model-path PATH` | Load a local `git clone` of the pyannote model (offline) |
-| `--num-speakers` / `--min-speakers` / `--max-speakers` | Hint pyannote speaker count |
-| `--align` | Force the optional alignment stage even when ASR returned timestamps |
-| `--repair true` | Run the LLM repair stage (needs `REPAIR_BASE_URL`/`REPAIR_MODEL`) |
-| `--resume` | Reuse existing intermediates under `data/work/<job_id>/` |
+
+| Flag                                                   | Effect                                                                  |
+| ------------------------------------------------------ | ----------------------------------------------------------------------- |
+| `--no-asr-fallback`                                    | Require explicit/running ASR; do not auto-start qwen-asr on :8002       |
+| `--no-vad`                                             | Disable VAD; transcribe the entire timeline                             |
+| `--vad-backend`                                        | `auto`, `silero`, `webrtcvad`, or `rms` (default `auto`)                |
+| `--chunk-mode`                                         | `fixed` (60s/2s overlap) or `pause-aligned` (~120s at onsets, max 180s) |
+| `--enhance-audio`                                      | High-pass + denoise + loudnorm during normalize                         |
+| `--skip-diarization`                                   | Skip pyannote; export without speaker labels                            |
+| `--diarization-model-path PATH`                        | Load a local `git clone` of the pyannote model (offline)                |
+| `--num-speakers` / `--min-speakers` / `--max-speakers` | Hint pyannote speaker count                                             |
+| `--align`                                              | Force the optional alignment stage even when ASR returned timestamps    |
+| `--repair true`                                        | Run the LLM repair stage (needs `REPAIR_BASE_URL`/`REPAIR_MODEL`)       |
+| `--resume`                                             | Reuse existing intermediates under `data/work/<job_id>/`                |
+
 
 ## Environment variables
 
-Copy [`.env.example`](.env.example) to `.env` and fill in what you need. The CLI
+Copy `[.env.example](.env.example)` to `.env` and fill in what you need. The CLI
 loads `.env` on startup; shell exports take precedence.
 
-| Variable | Purpose |
-|----------|---------|
-| `ASR_BASE_URL` / `ASR_ENDPOINT` | Optional fixed ASR base URL (same as `--asr-endpoint`) |
-| `ASR_API_KEY` | Optional Bearer token for the ASR endpoint |
-| `REPAIR_BASE_URL` | OpenAI-compatible chat endpoint (e.g. `https://api.openai.com/v1`) |
-| `REPAIR_MODEL` | Repair model id (e.g. `gpt-4o-mini`) |
-| `REPAIR_API_KEY` | Bearer token for the repair endpoint |
-| `HF_TOKEN` | Used only to **download** gated pyannote weights. Skip with `--skip-diarization` or use `--diarization-model-path` after a local clone. |
+
+| Variable                        | Purpose                                                                                                                                 |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `ASR_BASE_URL` / `ASR_ENDPOINT` | Optional fixed ASR base URL (same as `--asr-endpoint`)                                                                                  |
+| `ASR_API_KEY`                   | Optional Bearer token for the ASR endpoint                                                                                              |
+| `OPENROUTER_API_KEY`            | OpenRouter key; enables hosted ASR/repair presets                                                                                       |
+| `OPENAI_API_KEY`                | OpenAI key; enables hosted ASR/repair presets                                                                                           |
+| `REPAIR_BASE_URL`               | OpenAI-compatible chat endpoint (e.g. `https://api.openai.com/v1`)                                                                      |
+| `REPAIR_MODEL`                  | Repair model id (e.g. `gpt-4o-mini`)                                                                                                    |
+| `REPAIR_API_KEY`                | Bearer token for the repair endpoint                                                                                                    |
+| `HF_TOKEN`                      | Used only to **download** gated pyannote weights. Skip with `--skip-diarization` or use `--diarization-model-path` after a local clone. |
+
 
 The default diarization model is
-[`pyannote/speaker-diarization-community-1`](https://huggingface.co/pyannote/speaker-diarization-community-1)
+`[pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1)`
 (CC-BY-4.0). Accept the model card terms once on Hugging Face, then either
 provide `HF_TOKEN` for the first download or follow the model card's "Offline
 use" instructions to clone the repo and point `--diarization-model-path` at
@@ -162,7 +207,7 @@ the local copy.
 ### Privacy / telemetry
 
 On startup the orchestrator disables optional usage metrics from dependencies
-(pyannote [`PYANNOTE_METRICS_ENABLED=0`](https://github.com/pyannote/pyannote-audio#telemetry),
+(pyannote `[PYANNOTE_METRICS_ENABLED=0](https://github.com/pyannote/pyannote-audio#telemetry)`,
 Hugging Face Hub `HF_HUB_DISABLE_TELEMETRY=1`). Shell exports and `.env` values
 take precedence — set `PYANNOTE_METRICS_ENABLED=1` to opt back in.
 
