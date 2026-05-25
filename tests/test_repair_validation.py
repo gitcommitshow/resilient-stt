@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from core.schema import TranscriptSegment
-from repair.repair_validation import validate_repair
+from resilient_stt.core.schema import TranscriptSegment
+from resilient_stt.repair.repair_validation import validate_repair
 
 
 def _segment() -> TranscriptSegment:

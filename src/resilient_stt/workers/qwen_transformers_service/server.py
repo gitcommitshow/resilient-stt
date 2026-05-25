@@ -5,18 +5,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-import sys
 import tempfile
 import threading
 import time
 from pathlib import Path
 from typing import Any
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-from core.privacy import disable_dependency_telemetry  # noqa: E402
+from resilient_stt.core.privacy import disable_dependency_telemetry
 
 disable_dependency_telemetry()
 

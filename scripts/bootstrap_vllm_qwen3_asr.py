@@ -325,7 +325,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ASR endpoint already reachable at {base_url}")
         print("Orchestrator example:")
         print(
-            f"  uv run python -m orchestrator.main --audio <file> --output <dir> "
+            f"  uv run resilient-stt --audio <file> --output <dir> "
             f"--asr-endpoint {base_url} --model {args.model}"
         )
         return 0
@@ -379,7 +379,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Qwen3-ASR ready at {base_url}")
         print("Orchestrator example:")
         print(
-            f"  uv run python -m orchestrator.main --audio <file> --output <dir> "
+            f"  uv run resilient-stt --audio <file> --output <dir> "
             f"--asr-endpoint {base_url} --model {args.model}"
         )
         print("Press Ctrl+C to stop the server.")

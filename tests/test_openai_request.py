@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from asr.openai_request import build_transcription_fields, is_openai_transcription_model
+from resilient_stt.asr.openai_request import build_transcription_fields, is_openai_transcription_model
 
 
 def test_whisper_1_requests_verbose_json_with_timestamps() -> None:

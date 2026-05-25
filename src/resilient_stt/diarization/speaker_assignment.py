@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from core.schema import (
+from resilient_stt.core.schema import (
     SPEAKER_UNKNOWN,
     ASRSegment,
     ASRWord,

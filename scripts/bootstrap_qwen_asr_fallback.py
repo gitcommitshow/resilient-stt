@@ -10,11 +10,11 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from core.privacy import disable_dependency_telemetry  # noqa: E402
+from resilient_stt.core.privacy import disable_dependency_telemetry  # noqa: E402
 
 disable_dependency_telemetry()
 
-from asr.fallback_worker import (  # noqa: E402
+from resilient_stt.asr.fallback_worker import (  # noqa: E402
     DEFAULT_BASE_URL,
     DEFAULT_HOST,
     DEFAULT_MODEL,
@@ -23,7 +23,7 @@ from asr.fallback_worker import (  # noqa: E402
     start_fallback_server,
     stop_fallback_server,
 )
-from asr.probe import probe_asr_endpoint  # noqa: E402
+from resilient_stt.asr.probe import probe_asr_endpoint  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -49,7 +49,10 @@ def main(argv: list[str] | None = None) -> int:
 
     install_worker_deps()
     if args.install_only:
-        print(f"Installed. Run: workers/qwen_transformers_service/.venv/bin/python workers/qwen_transformers_service/server.py")
+        print(
+            "Installed. Worker venv: ~/.cache/resilient-stt/qwen-transformers-worker/.venv — "
+            "run: python -m resilient_stt.workers.qwen_transformers_service.server"
+        )
         return 0
 
     if probe_asr_endpoint(f"http://{args.host}:{args.port}/v1"):

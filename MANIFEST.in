@@ -1,0 +1,4 @@
+graft src
+prune tests
+prune scripts
+global-exclude *.egg-info

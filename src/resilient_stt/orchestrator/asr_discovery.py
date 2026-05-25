@@ -6,7 +6,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 
-from asr.fallback_worker import (
+from resilient_stt.asr.fallback_worker import (
     DEFAULT_BASE_URL as FALLBACK_BASE_URL,
     DEFAULT_HOST as FALLBACK_HOST,
     DEFAULT_MODEL as FALLBACK_MODEL,
@@ -19,7 +19,7 @@ from asr.fallback_worker import (
     wait_for_existing_worker,
     worker_deps_installed,
 )
-from asr.probe import probe_asr_endpoint
+from resilient_stt.asr.probe import probe_asr_endpoint
 
 from .openai_defaults import (
     DEFAULT_OPENAI_ASR_MODEL,

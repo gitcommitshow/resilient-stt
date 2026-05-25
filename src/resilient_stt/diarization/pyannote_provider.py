@@ -12,8 +12,8 @@ from typing import Any
 
 import soundfile as sf
 
-from core.privacy import disable_dependency_telemetry, disable_pyannote_session_telemetry
-from core.schema import DiarizationTurn
+from resilient_stt.core.privacy import disable_dependency_telemetry, disable_pyannote_session_telemetry
+from resilient_stt.core.schema import DiarizationTurn
 
 disable_dependency_telemetry()
 

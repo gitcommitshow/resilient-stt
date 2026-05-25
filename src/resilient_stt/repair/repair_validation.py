@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.schema import TranscriptSegment
+from resilient_stt.core.schema import TranscriptSegment
 
 _LENGTH_RATIO_MAX = 1.8
 _TIMESTAMP_TOLERANCE = 1e-3

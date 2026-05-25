@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from orchestrator.config import JobConfig
-from orchestrator.openai_defaults import (
+from resilient_stt.orchestrator.config import JobConfig
+from resilient_stt.orchestrator.openai_defaults import (
     DEFAULT_OPENAI_ASR_MODEL,
     DEFAULT_OPENAI_REPAIR_MODEL,
     OPENAI_API_BASE_URL,

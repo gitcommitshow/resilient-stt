@@ -10,7 +10,7 @@ import soundfile as sf
 
 torch = pytest.importorskip("torch")
 
-from diarization.pyannote_provider import load_pyannote_audio  # noqa: E402
+from resilient_stt.diarization.pyannote_provider import load_pyannote_audio  # noqa: E402
 
 
 def test_load_pyannote_audio_mono(tmp_path: Path) -> None:

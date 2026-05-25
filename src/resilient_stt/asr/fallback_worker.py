@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.metadata
 import os
 import shutil
 import socket
@@ -11,19 +12,35 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from asr.probe import probe_asr_endpoint
-from core.privacy import apply_telemetry_env
+from resilient_stt.asr.probe import probe_asr_endpoint
+from resilient_stt.core.privacy import apply_telemetry_env
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-WORKER_DIR = REPO_ROOT / "workers" / "qwen_transformers_service"
-DEFAULT_VENV = WORKER_DIR / ".venv"
+_PACKAGE_ROOT = Path(__file__).resolve().parent.parent
+WORKER_DIR = _PACKAGE_ROOT / "workers" / "qwen_transformers_service"
 SERVER_SCRIPT = WORKER_DIR / "server.py"
+WORKER_MODULE = "resilient_stt.workers.qwen_transformers_service.server"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8002
 DEFAULT_BASE_URL = f"http://{DEFAULT_HOST}:{DEFAULT_PORT}/v1"
 DEFAULT_MODEL = "Qwen/Qwen3-ASR-0.6B"
 STARTUP_TIMEOUT_SEC = 120.0
 BUSY_WORKER_WAIT_SEC = 120.0
+
+
+def _worker_venv_dir() -> Path:
+    """Return a user-writable path for the isolated qwen-asr worker virtualenv."""
+    cache_home = os.environ.get("XDG_CACHE_HOME")
+    base = Path(cache_home) if cache_home else Path.home() / ".cache"
+    return base / "resilient-stt" / "qwen-transformers-worker" / ".venv"
+
+
+DEFAULT_VENV = _worker_venv_dir()
+
+
+def _editable_repo_root() -> Path | None:
+    """Repo root when running from a source checkout (``src/`` layout)."""
+    candidate = Path(__file__).resolve().parents[3]
+    return candidate if (candidate / "pyproject.toml").is_file() else None
 
 
 def is_tcp_port_open(host: str, port: int, *, timeout_sec: float = 0.5) -> bool:
@@ -71,43 +88,66 @@ def _venv_python(venv_dir: Path) -> Path:
 def ensure_venv(venv_dir: Path = DEFAULT_VENV) -> Path:
     """Create the worker virtualenv when missing."""
     venv_dir = venv_dir.resolve()
+    venv_dir.parent.mkdir(parents=True, exist_ok=True)
     py = _venv_python(venv_dir)
     if py.is_file():
         return py
     uv = shutil.which("uv")
     if uv:
-        subprocess.run([uv, "venv", str(venv_dir)], check=True, cwd=REPO_ROOT)
+        subprocess.run([uv, "venv", str(venv_dir)], check=True, cwd=WORKER_DIR)
     else:
-        subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True)
+        subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True, cwd=WORKER_DIR)
     return _venv_python(venv_dir)
 
 
-def install_worker_deps(venv_dir: Path = DEFAULT_VENV) -> None:
-    """Install qwen-asr and the minimal HTTP stack into the worker venv."""
-    py = ensure_venv(venv_dir)
+def _pip_install_into_worker_venv(py: Path, *args: str) -> None:
+    """Install into the worker venv; use ``uv pip`` when uv created the venv (no bundled pip)."""
     uv = shutil.which("uv")
-    packages = ["qwen-asr", "uvicorn[standard]", "starlette", "python-multipart"]
     if uv:
-        subprocess.run(
-            [uv, "pip", "install", "-p", str(py), *packages],
-            check=True,
-            cwd=REPO_ROOT,
-        )
+        subprocess.run([uv, "pip", "install", "-p", str(py), *args], check=True, cwd=WORKER_DIR)
     else:
-        subprocess.run([str(py), "-m", "pip", "install", *packages], check=True, cwd=REPO_ROOT)
+        subprocess.run([str(py), "-m", "pip", "install", *args], check=True, cwd=WORKER_DIR)
+
+
+def _install_orchestrator_into_worker_venv(py: Path) -> None:
+    """Install resilient-stt into the worker venv so ``server`` can import the package."""
+    repo_root = _editable_repo_root()
+    if repo_root is not None:
+        _pip_install_into_worker_venv(py, "-e", str(repo_root))
+        return
+    try:
+        version = importlib.metadata.version("resilient-stt")
+    except importlib.metadata.PackageNotFoundError as exc:
+        raise RuntimeError(
+            "resilient-stt is not installed; cannot provision the qwen-asr worker venv."
+        ) from exc
+    _pip_install_into_worker_venv(py, f"resilient-stt=={version}")
+
+
+def install_worker_deps(venv_dir: Path = DEFAULT_VENV) -> None:
+    """Install qwen-asr, HTTP stack, and resilient-stt into the worker venv."""
+    py = ensure_venv(venv_dir)
+    _pip_install_into_worker_venv(
+        py,
+        "qwen-asr",
+        "uvicorn[standard]",
+        "starlette",
+        "python-multipart",
+    )
+    _install_orchestrator_into_worker_venv(py)
 
 
 def worker_deps_installed(venv_dir: Path = DEFAULT_VENV) -> bool:
-    """Return True when the worker venv can import qwen-asr and the HTTP stack."""
+    """Return True when the worker venv can import qwen-asr and resilient_stt."""
     py = _venv_python(venv_dir)
     if not py.is_file():
         return False
     try:
         subprocess.run(
-            [str(py), "-c", "import qwen_asr, starlette, uvicorn"],
+            [str(py), "-c", "import qwen_asr, starlette, uvicorn, resilient_stt"],
             check=True,
             capture_output=True,
-            cwd=REPO_ROOT,
+            cwd=WORKER_DIR,
         )
         return True
     except subprocess.CalledProcessError:
@@ -137,7 +177,8 @@ def start_fallback_server(
 
     cmd = [
         str(py),
-        str(SERVER_SCRIPT),
+        "-m",
+        WORKER_MODULE,
         "--host",
         host,
         "--port",
@@ -147,16 +188,14 @@ def start_fallback_server(
         "--device",
         device,
     ]
-    if with_aligner:
-        pass  # aligner enabled by default; no flag needed
-    else:
+    if not with_aligner:
         cmd.append("--no-aligner")
 
     env = os.environ.copy()
     apply_telemetry_env(env)
     proc = subprocess.Popen(
         cmd,
-        cwd=REPO_ROOT,
+        cwd=WORKER_DIR,
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,

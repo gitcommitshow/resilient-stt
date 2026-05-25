@@ -13,9 +13,10 @@ what it deliberately does **not** own. Operational setup lives in
 optional **speaker labels** and **LLM-based text repair**, without coupling the
 orchestrator to any single ASR or alignment model.
 
-**v1 delivery:** A **local, non-interactive CLI** (`python -m orchestrator.main`)
+**v1 delivery:** A **local, non-interactive CLI** (`resilient-stt` or
+`python -m resilient_stt.orchestrator.main`)
 driven entirely by flags and environment variables. User-facing HTTP/API belongs
-in **separate projects** that call `orchestrator.pipeline.run(JobConfig)`.
+in **separate projects** that call `resilient_stt.orchestrator.pipeline.run(JobConfig)`.
 
 **Languages:** `hi`, `en`, and code-mixed **Hinglish** via ASR language hints
 and repair prompts that preserve mixed script/style.
@@ -61,7 +62,7 @@ flowchart TB
   repair --> out[ExportJSON_SRT_VTT]
 ```
 
-**Stage order** (see `orchestrator/pipeline.py`):
+**Stage order** (see `src/resilient_stt/orchestrator/pipeline.py`):
 
 1. Normalize → `normalized.wav` (optional `--enhance-audio`: high-pass + denoise + loudnorm)
 2. VAD → `speech_regions.json` `{regions, speech_onsets_samples}` (unless `--no-vad`)
@@ -83,21 +84,24 @@ Every stage writes **debuggable artifacts** under `data/work/<job_id>/`.
 
 ```text
 resilient-stt/
-  orchestrator/     # CLI, JobConfig, pipeline.run(), asr_discovery
-  core/             # schemas, audio, vad, silero_vad, chunking, stitching, privacy
-  asr/              # ASRProvider, endpoint client, probe, fallback_worker
-  diarization/      # pyannote provider + speaker assignment
-  alignment/        # AlignmentProvider ABC + NoOp + stubs
-  repair/           # LLM repair, prompts, validation
-  workers/          # ASR microservices (qwen-transformers implemented; others documented)
-  scripts/          # optional ASR worker bootstrap helpers
-  data/             # input / work / output directories
-  tests/            # mocked unit tests (no live ffmpeg/pyannote/LLM)
-  docs/             # this file
+  src/resilient_stt/
+    orchestrator/     # CLI, JobConfig, pipeline.run(), asr_discovery
+    core/             # schemas, audio, vad, silero_vad, chunking, stitching, privacy
+    asr/              # ASRProvider, endpoint client, probe, fallback_worker
+    diarization/      # pyannote provider + speaker assignment
+    alignment/        # AlignmentProvider ABC + NoOp + stubs
+    repair/           # LLM repair, prompts, validation
+    workers/          # bundled qwen-transformers ASR microservice
+  workers/            # optional worker README stubs (vLLM, Whisper, …)
+  scripts/            # optional ASR worker bootstrap helpers
+  data/               # input / work / output directories
+  tests/              # mocked unit tests (no live ffmpeg/pyannote/LLM)
+  docs/               # this file
 ```
 
-**Package name:** `resilient-stt` (PyPI-style); import paths are top-level modules
-(`core`, `asr`, `orchestrator`, …) after editable install.
+**PyPI package:** `resilient-stt`. **Import namespace:** `resilient_stt` (e.g.
+`from resilient_stt.core.schema import TranscriptSegment`). CLI entry point:
+`resilient-stt` → `resilient_stt.orchestrator.main:cli`.
 
 ---
 
@@ -108,20 +112,21 @@ resilient-stt/
 - **Decision:** All ASR goes through `POST {base}/audio/transcriptions` with
   multipart fields matching the OpenAI audio API (`file`, `model`, `language`,
   `prompt`, `response_format`, `timestamp_granularities[]`).
-- **Implementation:** `asr/endpoint_client.py` → `OpenAICompatibleASRProvider`.
+- **Implementation:** `resilient_stt.asr.endpoint_client` → `OpenAICompatibleASRProvider`.
 - **Rationale:** Swap vLLM Qwen, hosted APIs, or custom Whisper/Parakeet
   wrappers without changing orchestrator code.
 - **Abstraction:** `ASRProvider.transcribe(...) -> ASRResult`; router is a
-  thin single-provider wrapper today (`asr/router.py`).
-- **Discovery:** When no endpoint is configured, `orchestrator/asr_discovery.py`
+  thin single-provider wrapper today (`resilient_stt.asr.router`).
+- **Discovery:** When no endpoint is configured, `resilient_stt.orchestrator.asr_discovery`
   probes vLLM (`:8001`), then an existing qwen-asr worker (`:8002`), then may
-  auto-start the local transformers worker via `asr/fallback_worker.py`.
+  auto-start the local transformers worker via `resilient_stt.asr.fallback_worker`
+  (worker venv under `~/.cache/resilient-stt/qwen-transformers-worker/`).
   Orchestrator process still holds no ASR weights — inference runs in the worker subprocess.
 
 ### 5.2 Internal ASR schema with global timestamps
 
 - **Decision:** Every ASR response is normalized to `ASRResult` in
-  `core/schema.py` with **global** `start`/`end` (seconds from file start).
+  `resilient_stt.core.schema` with **global** `start`/`end` (seconds from file start).
 - **Rule:** `global_time = chunk.start_offset + local_time`.
 - **Always retain** `raw_response` for debugging and backend-specific quirks.
 - **Weak timestamps:** If ASR returns text only, one spanning segment is
@@ -129,8 +134,8 @@ resilient-stt/
 
 ### 5.3 VAD before ASR (speech-only transcription)
 
-- **Decision:** Default **VAD** (`core/vad.py`) with backend `auto`: **Silero**
-  (Qwen toolkit default, `core/silero_vad.py`) → webrtcvad → RMS energy gate.
+- **Decision:** Default **VAD** (`resilient_stt.core.vad`) with backend `auto`: **Silero**
+  (Qwen toolkit default, `resilient_stt.core.silero_vad`) → webrtcvad → RMS energy gate.
   **Silent audio is not sent to ASR.**
 - **Artifact:** `speech_regions.json` stores merged `regions` plus
   `speech_onsets_samples` (Silero onsets feed pause-aligned chunking).
@@ -151,7 +156,7 @@ resilient-stt/
 
 ### 5.5 Stitching & overlap deduplication
 
-- **Decision:** `core/stitching.py` merges chunk `ASRResult`s, deduping segments
+- **Decision:** `resilient_stt.core.stitching` merges chunk `ASRResult`s, deduping segments
   and words in overlap zones (±50 ms for words; confidence/length for segments).
 - **Rationale:** Overlap exists only to avoid word boundary cuts; duplicates
   must not appear in the final transcript.
@@ -170,7 +175,7 @@ resilient-stt/
 
 ### 5.7 Speaker assignment after ASR stitch
 
-- **Decision:** `diarization/speaker_assignment.py` assigns speakers **after**
+- **Decision:** `resilient_stt.diarization.speaker_assignment` assigns speakers **after**
   ASR stitching.
 - **Primary:** Per-word max IoU overlap with diarization turns.
 - **Fallback:** Segment midpoint inside a turn; else `SPEAKER_UNKNOWN`.
@@ -187,12 +192,12 @@ resilient-stt/
 ### 5.9 LLM repair: text only, validated
 
 - **Decision:** Repair calls an OpenAI-compatible **`/chat/completions`** endpoint
-  (`repair/llm_repair.py`), not embedded LLM weights.
+  (`resilient_stt.repair.llm_repair`), not embedded LLM weights.
 - **Passes:**
   - Pass 1: windows of 20 segments, stride 18; accept center 18 updates only.
   - Pass 2: low-confidence segments only.
 - **Invariant:** Repair may change **`text` only** — not `speaker`, `start`,
-  `end`, or segment count (`repair/repair_validation.py`).
+  `end`, or segment count (`resilient_stt.repair.repair_validation`).
 - **Status:** `repair_status` ∈ `raw | unchanged | corrected | failed`.
 
 ### 5.10 Configuration & execution model
@@ -201,7 +206,7 @@ resilient-stt/
   `.env` via `python-dotenv` on startup.
 - **Secrets:** `ASR_API_KEY`, `REPAIR_*`, `HF_TOKEN` in `.env` (see
   `.env.example`); ASR URL/model remain CLI args for now.
-- **Future:** HTTP microservice wraps `JobConfig` + `pipeline.run()`; same
+- **Future:** HTTP microservice wraps `JobConfig` + `resilient_stt.orchestrator.pipeline.run()`; same
   non-interactive contract.
 
 ### 5.11 Dependencies & platforms
@@ -224,7 +229,7 @@ resilient-stt/
 
 ### 5.12 Workers folder
 
-- **Decision:** ASR runs out-of-process. `workers/qwen_transformers_service/`
+- **Decision:** ASR runs out-of-process. `resilient_stt.workers.qwen_transformers_service/`
   ships a CPU/MPS qwen-asr server; the orchestrator may auto-start it when no
   endpoint is reachable. vLLM, Whisper, and Parakeet wrappers remain documented
   placeholders — implement or deploy separately.
@@ -257,9 +262,9 @@ overlap metadata, optional `region_id`.
 ### Export document (`TranscriptDocument`)
 
 `audio_file`, `duration`, `language`, `asr_provider`, `asr_model`, `segments[]`
-→ JSON / SRT / VTT via `core/exporters.py`.
+→ JSON / SRT / VTT via `resilient_stt.core.exporters`.
 
-Full field definitions: `core/schema.py`.
+Full field definitions: `resilient_stt.core.schema`.
 
 ---
 
@@ -283,7 +288,7 @@ Do **not**:
   splits, ASR discovery, repair validation, privacy, audio enhance — mocks and
   synthetic WAV only.
 - **No live** ffmpeg, pyannote, or LLM in CI.
-- **Entry point for API future:** test `pipeline.run(JobConfig, asr_provider=...)`
+- **Entry point for API future:** test `resilient_stt.orchestrator.pipeline.run(JobConfig, asr_provider=...)`
   with injected fakes.
 
 ---
@@ -292,11 +297,11 @@ Do **not**:
 
 | Item | Direction |
 |------|-----------|
-| HTTP API | Thin FastAPI/GRPC layer over `pipeline.run(JobConfig)` |
-| ASR workers | Extend `workers/*` (Whisper/Parakeet stubs remain) |
+| HTTP API | Thin FastAPI/GRPC layer over `resilient_stt.orchestrator.pipeline.run(JobConfig)` |
+| ASR workers | Extend optional `workers/*` docs or new `resilient_stt.workers.*` packages |
 | Parallel chunk ASR | Concurrent httpx calls per chunk |
 | Real aligners | Wire `QwenAligner` / WhisperX behind `AlignmentProvider` |
-| Multi-endpoint ASR | Extend `asr/router.py` for routing by language/model |
+| Multi-endpoint ASR | Extend `resilient_stt.asr.router` for routing by language/model |
 
 ---
 
@@ -304,8 +309,9 @@ Do **not**:
 
 | Document | Purpose |
 |----------|---------|
-| [README.md](../README.md) | Install (uv), usage, env vars, artifacts |
+| [README.md](../README.md) | PyPI + source install, usage, env vars, artifacts |
+| [cli.md](cli.md) | Full CLI flag reference |
 | [.env.example](../.env.example) | Secret/template for local runs |
 | [workers/README.md](../workers/README.md) | ASR microservice API contract |
-| `orchestrator/pipeline.py` | Authoritative stage implementation |
-| `core/schema.py` | Authoritative type definitions |
+| `src/resilient_stt/orchestrator/pipeline.py` | Authoritative stage implementation |
+| `src/resilient_stt/core/schema.py` | Authoritative type definitions |

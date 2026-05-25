@@ -6,13 +6,13 @@ import json
 import logging
 from pathlib import Path
 
-from alignment.base import AlignmentProvider, NoOpAligner
-from asr.endpoint_client import ASRProvider, OpenAICompatibleASRProvider
-from asr.router import ASRRouter
-from core.audio import audio_duration, normalize_audio
-from core.chunking import materialize_chunks, plan_chunks, plan_chunks_pause_aligned
-from core.exporters import export_all, write_json
-from core.schema import (
+from resilient_stt.alignment.base import AlignmentProvider, NoOpAligner
+from resilient_stt.asr.endpoint_client import ASRProvider, OpenAICompatibleASRProvider
+from resilient_stt.asr.router import ASRRouter
+from resilient_stt.core.audio import audio_duration, normalize_audio
+from resilient_stt.core.chunking import materialize_chunks, plan_chunks, plan_chunks_pause_aligned
+from resilient_stt.core.exporters import export_all, write_json
+from resilient_stt.core.schema import (
     ASRResult,
     ASRSegment,
     ASRWord,
@@ -22,10 +22,10 @@ from core.schema import (
     TranscriptDocument,
     TranscriptSegment,
 )
-from core.stitching import stitch_results
-from core.vad import analyze_vad, whole_file_region
-from diarization.speaker_assignment import assign_speakers
-from repair.llm_repair import OpenAICompatibleRepairClient, repair_transcript
+from resilient_stt.core.stitching import stitch_results
+from resilient_stt.core.vad import analyze_vad, whole_file_region
+from resilient_stt.diarization.speaker_assignment import assign_speakers
+from resilient_stt.repair.llm_repair import OpenAICompatibleRepairClient, repair_transcript
 
 from .config import JobConfig
 
@@ -191,7 +191,7 @@ def _diarize_stage(job: JobConfig, normalized: Path) -> list[DiarizationTurn]:
         return []
 
     try:
-        from diarization.pyannote_provider import PyannoteDiarizationProvider
+        from resilient_stt.diarization.pyannote_provider import PyannoteDiarizationProvider
     except ImportError as exc:
         raise RuntimeError(
             "Diarization requires pyannote: uv sync --extra diarization "

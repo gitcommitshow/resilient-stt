@@ -1,4 +1,4 @@
-"""Command-line entry point: `python -m orchestrator.main ...`."""
+"""Command-line entry point: `resilient-stt` or `python -m resilient_stt.orchestrator.main`."""
 
 from __future__ import annotations
 
@@ -6,9 +6,9 @@ import argparse
 import logging
 import sys
 
-from core.privacy import disable_dependency_telemetry
+from resilient_stt.core.privacy import disable_dependency_telemetry
 
-from asr.endpoint_client import OpenAICompatibleASRProvider, OpenRouterASRProvider
+from resilient_stt.asr.endpoint_client import OpenAICompatibleASRProvider, OpenRouterASRProvider
 
 from .asr_discovery import LOCAL_ASR_TIMEOUT_SEC, resolve_asr
 from .config import JobConfig
@@ -179,7 +179,7 @@ def _load_dotenv() -> None:
 
 
 def cli(argv: list[str] | None = None) -> int:
-    """Entry point usable as a console script or via `python -m orchestrator.main`."""
+    """Entry point usable as the ``resilient-stt`` console script or ``python -m`` module."""
 
     _load_dotenv()
     disable_dependency_telemetry()
