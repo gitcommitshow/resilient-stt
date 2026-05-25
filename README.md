@@ -1,7 +1,21 @@
-# Resilient STT (Speech-To-Text)
+# Resilient STT
 
-A local speech transcription pipeline for English, Hindi, and Hinglish audio.  
-The orchestrator owns chunking, diarization, repair, and exports; ASR inference is **externalized** behind an OpenAI-compatible `/v1/audio/transcriptions` endpoint that you choose (vLLM, hosted APIs including OpenAI and Open Router API, faster-whisper wrapper, Parakeet wrapper, etc.).
+**The only Speech-To-Text pipeline you need.**
+
+A provider-agnostic speech-to-text pipeline that plugs into **any OpenAI-compatible ASR endpoint** — OpenAI, OpenRouter, vLLM, faster-whisper, or the bundled Qwen worker — and returns rich, timestamped transcripts with speaker labels and validated metadata. Resilient STT handles everything around inference: audio preprocessing, voice-activity detection, intelligent chunking, pyannote diarization, and LLM-powered transcript repair. Tested on English, Hindi, and Hinglish but it is designed to support all the languages the ASR model of your choice supports.
+
+## Features
+
+- **Any ASR provider** — Point at any service that implements `POST /v1/audio/transcriptions` (or OpenRouter STT); swap models with flags, not code changes.
+- **Resilient ASR discovery** — Auto-detects local workers and hosted APIs, retries failed requests, and starts a bundled Qwen fallback when nothing else is reachable.
+- **Audio preprocessing** — ffmpeg normalization to mono 16 kHz WAV with optional enhancement before transcription.
+- **Voice activity detection** — Silero, webrtcvad, or RMS fallback to skip silence and focus compute on speech.
+- **Smart chunking & stitching** — Fixed or pause-aligned chunks for long files, with global word and segment timestamps stitched back together.
+- **Speaker diarization** — pyannote on the full audio, with word-level speaker assignment (IoU + segment fallback).
+- **LLM transcript repair** — Optional two-pass repair via any OpenAI-compatible chat endpoint, with validation to preserve timing and mixed-script Hinglish.
+- **Rich exports** — JSON, SRT, and VTT with segments, words, speakers, and pipeline metadata.
+- **Lightweight orchestrator** — No ASR model weights in the core package; inference stays in the microservice you choose.
+- **CLI and Python API** — `resilient-stt` from the terminal, or `pipeline.run(JobConfig)` for programmatic use.
 
 > **Experimental:** This project is under active development and is **not production-ready**. Expect breaking changes, incomplete features, and behavior that may shift between releases. Use for evaluation and prototyping only.
 
@@ -444,7 +458,14 @@ not invoke ffmpeg, pyannote, or any LLM.
 
 ## Publishing (maintainers)
 
-Releases are published to [PyPI](https://pypi.org/project/resilient-stt/) via GitHub Actions when a tag `vX.Y.Z` is pushed and matches `version` in `pyproject.toml`. Configure a [PyPI trusted publisher](https://docs.pypi.org/trusted-publishers/) for workflow `publish.yml` on repo `gitcommitshow/resilient-stt`.
+1. **Commits on `main`** — use [Conventional Commits](https://www.conventionalcommits.org/) in PR titles or squash messages (`feat:`, `fix:`, `chore:`, etc.).
+2. **release-please** (`.github/workflows/release-please.yml`) — opens/updates a **Release PR** that bumps `pyproject.toml`, `CHANGELOG.md`, and `.release-please-manifest.json`.
+3. **Ship** — merge the Release PR; release-please creates GitHub Release + tag `vX.Y.Z`.
+4. **PyPI** (`.github/workflows/publish.yml`) — runs on that tag when it matches `version` in `pyproject.toml`.
+
+One-time: configure a [PyPI trusted publisher](https://docs.pypi.org/trusted-publishers/) for workflow `publish.yml` on repo `gitcommitshow/resilient-stt`. In the org/repo settings, allow GitHub Actions to create and approve pull requests if Release PRs do not appear.
+
+See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## License
 

@@ -1,0 +1,18 @@
+# Opens/updates a Release PR on main; merging it creates vX.Y.Z and triggers publish.yml.
+name: release-please
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
