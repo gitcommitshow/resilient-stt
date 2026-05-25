@@ -8,7 +8,8 @@ version = "0.1.0"
 description = "Local STT orchestrator for English/Hindi/Hinglish with external OpenAI-compatible ASR, pyannote diarization, and LLM transcript repair."
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
-license = "AGPL-3.0-or-later"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
 authors = [{ name = "resilient-stt" }]
 dependencies = [
     "pydantic>=2.6,<3",
