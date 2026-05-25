@@ -1,8 +1,14 @@
 # Resilient STT
 
+[![PyPI](https://img.shields.io/pypi/v/resilient-stt)](https://pypi.org/project/resilient-stt/)
+[![Python](https://img.shields.io/pypi/pyversions/resilient-stt)](https://pypi.org/project/resilient-stt/)
+[![Downloads](https://img.shields.io/pypi/dm/resilient-stt)](https://pypi.org/project/resilient-stt/)
+[![License: GPL v3](https://img.shields.io/github/license/gitcommitshow/resilient-stt)](https://github.com/gitcommitshow/resilient-stt/blob/main/LICENSE)
+[![Status](https://img.shields.io/badge/status-alpha-orange)](https://github.com/gitcommitshow/resilient-stt#note)
+
 **The only Speech-To-Text pipeline you need.**
 
-![banner](./banner.png)
+![banner](https://raw.githubusercontent.com/gitcommitshow/resilient-stt/refs/heads/main/banner.png)
 
 A provider-agnostic speech-to-text pipeline that plugs into **any OpenAI-compatible ASR endpoint** — OpenAI, OpenRouter, vLLM, faster-whisper, or the bundled Qwen worker — and returns rich, timestamped transcripts with speaker labels and validated metadata. Resilient STT handles everything around inference: audio preprocessing, voice-activity detection, intelligent chunking, pyannote diarization, and LLM-powered transcript repair. Tested on English, Hindi, and Hinglish but it is designed to support all the languages the ASR model of your choice supports.
 
