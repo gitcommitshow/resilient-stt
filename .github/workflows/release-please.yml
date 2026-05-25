@@ -16,3 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: googleapis/release-please-action@v4
+        with:
+          # PAT required so release:created triggers publish.yml (GITHUB_TOKEN does not).
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          release-type: python

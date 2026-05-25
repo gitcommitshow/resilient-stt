@@ -482,7 +482,12 @@ not invoke ffmpeg, pyannote, or any LLM.
 
 **Retry a missed publish** — re-run the failed **Publish to PyPI** workflow from Actions (the release event is preserved).
 
-One-time: configure a [PyPI trusted publisher](https://docs.pypi.org/trusted-publishers/) for workflow `publish.yml` on repo `gitcommitshow/resilient-stt`. In the org/repo settings, allow GitHub Actions to create and approve pull requests if Release PRs do not appear.
+One-time setup:
+
+- **PyPI** — [trusted publisher](https://docs.pypi.org/trusted-publishers/) for workflow `publish.yml` on repo `gitcommitshow/resilient-stt`.
+- **release-please** — repo secret `RELEASE_PLEASE_TOKEN`: fine-grained PAT (or classic `repo`) with **Contents** and **Pull requests** read/write on this repo. Without it, releases are created with `GITHUB_TOKEN` and **Publish to PyPI** will not run.
+
+In org/repo settings, allow GitHub Actions to create and approve pull requests if Release PRs do not appear.
 
 See [CHANGELOG.md](CHANGELOG.md) for release history.
 
