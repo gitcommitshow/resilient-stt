@@ -27,6 +27,106 @@ The orchestrator never embeds ASR model weights. Point `--asr-endpoint` at any
 service that implements `POST /v1/audio/transcriptions` per the OpenAI
 contract.
 
+## Supported models
+
+The orchestrator is **provider-agnostic**: any service that implements
+`POST /v1/audio/transcriptions` (OpenAI multipart shape) or OpenRouter STT
+(JSON + base64) works when you set the right **endpoint**, **model id**, and
+**API key**. The lists below are **examples**, not an exhaustive allowlist —
+use whatever model id your provider documents.
+
+Configure via `--asr-endpoint`, `--model`, and env vars (see
+[docs/cli.md](docs/cli.md) and [ASR auto-detection](#asr-auto-detection)).
+
+### ASR — OpenAI API
+
+| Setting | Value |
+| -------- | ----- |
+| Endpoint | `https://api.openai.com/v1` or omit + `OPENAI_API_KEY` for auto-detect |
+| API key | `OPENAI_API_KEY` or `ASR_API_KEY` |
+| Default `--model` | `whisper-1` |
+
+Example transcription models on OpenAI ([Audio API](https://platform.openai.com/docs/guides/speech-to-text)):
+
+| Model | Timestamps |
+| ----- | ---------- |
+| `whisper-1` | Word + segment (`verbose_json`) |
+| `gpt-4o-transcribe` | Text only |
+| `gpt-4o-mini-transcribe` | Text only |
+| `gpt-4o-transcribe-diarize` | Speaker labels in response |
+
+New OpenAI transcription models generally work with `--model` as long as they
+use the same endpoint.
+
+### ASR — OpenRouter
+
+| Setting | Value |
+| -------- | ----- |
+| Endpoint | `https://openrouter.ai/api/v1` or omit + `OPENROUTER_API_KEY` for auto-detect |
+| API key | `OPENROUTER_API_KEY` or `ASR_API_KEY` |
+| Default `--model` | `openai/whisper-1` |
+
+Example STT models on OpenRouter ([STT docs](https://openrouter.ai/docs/guides/overview/multimodal/stt); browse [speech-to-text models](https://openrouter.ai/collections/speech-to-text-models)):
+
+| Model slug | Notes |
+| ---------- | ----- |
+| `openai/whisper-1` | Default auto-detect |
+| `openai/whisper-large-v3` | Whisper via OpenRouter |
+| `google/chirp-3` | Google Chirp |
+| `mistralai/voxtral-mini-transcribe` | Mistral Voxtral |
+
+Any OpenRouter model with **transcription** output modality works — pass its slug
+to `--model`. Responses are **text-only** (no segment timestamps); the pipeline
+sets `weak_timestamps` and may run optional alignment.
+
+### ASR — Local OpenAI-compatible workers
+
+Point `--asr-endpoint` at any local or remote server that speaks the
+[worker contract](workers/README.md) (`multipart` upload, `verbose_json` preferred).
+The orchestrator sends 16 kHz mono WAV chunks.
+
+| Worker | Endpoint (default) | Example `--model` | Status |
+| ------ | ------------------ | ----------------- | ------ |
+| [qwen_transformers_service](workers/qwen_transformers_service/README.md) | `http://127.0.0.1:8002/v1` | `Qwen/Qwen3-ASR-0.6B` | **Bundled** — auto-started when no other ASR is reachable |
+| [qwen_vllm_service](workers/qwen_vllm_service/README.md) | `http://127.0.0.1:8001/v1` | `Qwen/Qwen3-ASR-1.7B` | **Bundled bootstrap** — Linux + NVIDIA GPU |
+| Custom (faster-whisper, vLLM, hosted proxy, etc.) | Your URL | Your model id | **Supported** — implement or deploy separately |
+| [whisper_openai_service](workers/whisper_openai_service/README.md) | — | — | **Planned Roadmap** |
+| [parakeet_openai_service](workers/parakeet_openai_service/README.md) | — | — | **Planned Roadmap** |
+
+For a third-party server, only the **API shape** must match; the model name is
+whatever that server expects.
+
+### Diarization (orchestrator-local)
+
+Not routed through OpenAI-compatible ASR — runs inside the pipeline on the full
+normalized file.
+
+| Model | Configure |
+| ----- | --------- |
+| `pyannote/speaker-diarization-community-1` (default) | `HF_TOKEN` or `--diarization-model-path`; skip with `--skip-diarization` |
+
+### LLM transcript repair
+
+Any OpenAI-compatible **`/chat/completions`** endpoint. Set `REPAIR_BASE_URL`,
+`REPAIR_MODEL`, and `REPAIR_API_KEY` (auto-filled from `OPENAI_API_KEY` or
+`OPENROUTER_API_KEY`).
+
+| Provider | Default `REPAIR_MODEL` | Example alternatives |
+| -------- | ---------------------- | -------------------- |
+| OpenAI API | `gpt-4o-mini` | `gpt-4o`, `gpt-4.1-mini`, … |
+| OpenRouter | `openai/gpt-4o-mini` | Any chat model slug your key can access |
+| Other | — | Any id your endpoint accepts |
+
+### Forced alignment
+
+| Component | Status |
+| --------- | ------ |
+| Qwen forced aligner (`alignment/qwen_aligner.py`) | **Planned Roadmap** |
+| WhisperX | **Planned Roadmap** |
+
+Today, alignment runs only when `--align` is set or ASR returned weak
+timestamps; the default aligner is a no-op pass-through.
+
 ## Install (uv)
 
 Prerequisites: [uv](https://docs.astral.sh/uv/), **ffmpeg** on PATH. ASR is optional to
