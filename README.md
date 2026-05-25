@@ -346,3 +346,8 @@ uv run pytest
 
 The included tests use synthetic fixtures and mocked HTTP responses; they do
 not invoke ffmpeg, pyannote, or any LLM.
+
+## License
+
+This project is licensed under the [GNU Affero General Public License v3.0 or
+later](LICENSE) (AGPL-3.0-or-later). See [LICENSE](LICENSE) for the full text.
