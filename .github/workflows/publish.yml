@@ -1,9 +1,9 @@
 name: Publish to PyPI
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+  release:
+    types: [created]
 
 permissions:
   id-token: write
@@ -14,10 +14,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
 
       - name: Verify tag matches package version
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
+          TAG="${{ github.event.release.tag_name }}"
+          TAG="${TAG#v}"
           VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
           if [ "$TAG" != "$VERSION" ]; then
             echo "Tag v$TAG does not match pyproject.toml version $VERSION"

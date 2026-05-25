@@ -478,7 +478,9 @@ not invoke ffmpeg, pyannote, or any LLM.
 1. **Commits on `main`** — use [Conventional Commits](https://www.conventionalcommits.org/) in PR titles or squash messages (`feat:`, `fix:`, `chore:`, etc.).
 2. **release-please** (`.github/workflows/release-please.yml`) — opens/updates a **Release PR** that bumps `pyproject.toml`, `CHANGELOG.md`, and `.release-please-manifest.json`.
 3. **Ship** — merge the Release PR; release-please creates GitHub Release + tag `vX.Y.Z`.
-4. **PyPI** (`.github/workflows/publish.yml`) — runs on that tag when it matches `version` in `pyproject.toml`.
+4. **PyPI** (`.github/workflows/publish.yml`) — runs on `release: created` when the tag matches `version` in `pyproject.toml`.
+
+**Retry a missed publish** — re-run the failed **Publish to PyPI** workflow from Actions (the release event is preserved).
 
 One-time: configure a [PyPI trusted publisher](https://docs.pypi.org/trusted-publishers/) for workflow `publish.yml` on repo `gitcommitshow/resilient-stt`. In the org/repo settings, allow GitHub Actions to create and approve pull requests if Release PRs do not appear.
 
