@@ -476,9 +476,11 @@ not invoke ffmpeg, pyannote, or any LLM.
 ## Publishing (maintainers)
 
 1. **Commits on `main`** — use [Conventional Commits](https://www.conventionalcommits.org/) in PR titles or squash messages (`feat:`, `fix:`, `chore:`, etc.).
-2. **release-please** (`.github/workflows/release-please.yml`) — opens/updates a **Release PR** that bumps `pyproject.toml`, `CHANGELOG.md`, and `.release-please-manifest.json`.
-3. **Ship** — merge the Release PR; release-please creates GitHub Release + tag `vX.Y.Z`.
-4. **PyPI** (`.github/workflows/publish.yml`) — runs on `release: created` when the tag matches `version` in `pyproject.toml`.
+2. **release-please** — manifest config in `release-please-config.json` (python strategy, package name). Last released version in `.release-please-manifest.json`. Opens a **Release PR** that bumps `pyproject.toml`, `CHANGELOG.md`, and the manifest.
+3. **Ship** — merge the Release PR; release-please creates GitHub Release + tag `resilient-stt-vX.Y.Z`.
+4. **PyPI** — runs on `release: created` when the tag matches `version` in `pyproject.toml`.
+
+Do **not** set `release-type` on the GitHub Action — that disables manifest mode and can reset versions to `0.1.0`. If a mistaken `0.1.0` release exists on GitHub, delete it and its tag before the next ship.
 
 **Retry a missed publish** — re-run the failed **Publish to PyPI** workflow from Actions (the release event is preserved).
 
