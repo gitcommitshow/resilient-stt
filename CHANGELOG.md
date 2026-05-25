@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file.
 Release versions and notes are managed by [release-please](https://github.com/googleapis/release-please)
 from [Conventional Commits](https://www.conventionalcommits.org/) on `main`.
 
+## [0.4.1](https://github.com/gitcommitshow/resilient-stt/compare/resilient-stt-v0.4.0...resilient-stt-v0.4.1) (2026-05-25)
+
+
+### Bug Fixes
+
+* trigger publish action on release ([#10](https://github.com/gitcommitshow/resilient-stt/issues/10)) ([c32cba1](https://github.com/gitcommitshow/resilient-stt/commit/c32cba164da85977edb8174393fe12fabc488a2f))
+
 ## [0.4.0](https://github.com/gitcommitshow/resilient-stt/compare/resilient-stt-v0.3.2...resilient-stt-v0.4.0) (2026-05-25)
 
 
