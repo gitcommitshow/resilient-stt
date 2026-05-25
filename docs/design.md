@@ -84,20 +84,24 @@ Every stage writes **debuggable artifacts** under `data/work/<job_id>/`.
 
 ```text
 resilient-stt/
-  src/resilient_stt/
-    orchestrator/     # CLI, JobConfig, pipeline.run(), asr_discovery
-    core/             # schemas, audio, vad, silero_vad, chunking, stitching, privacy
-    asr/              # ASRProvider, endpoint client, probe, fallback_worker
-    diarization/      # pyannote provider + speaker assignment
-    alignment/        # AlignmentProvider ABC + NoOp + stubs
-    repair/           # LLM repair, prompts, validation
-    workers/          # bundled qwen-transformers ASR microservice
-  workers/            # optional worker README stubs (vLLM, Whisper, …)
-  scripts/            # optional ASR worker bootstrap helpers
-  data/               # input / work / output directories
-  tests/              # mocked unit tests (no live ffmpeg/pyannote/LLM)
-  docs/               # this file
+  src/resilient_stt/          # installable package (PyPI name: resilient-stt)
+    orchestrator/             # CLI, JobConfig, pipeline.run(), asr_discovery
+    core/                     # schemas, audio, vad, silero_vad, chunking, stitching, exports
+    asr/                      # ASRProvider, endpoint client, probe, fallback_worker
+    diarization/              # pyannote provider + speaker assignment
+    alignment/                # AlignmentProvider ABC + NoOp + stubs
+    repair/                   # LLM repair, prompts, validation
+    workers/                  # bundled qwen-asr HTTP service (shipped in wheel)
+  workers/                    # docs for optional ASR workers (vLLM, Whisper, …)
+  scripts/                    # bootstrap helpers (not installed from PyPI)
+  tests/                      # mocked unit tests (no live ffmpeg/pyannote/LLM)
+  docs/                       # design, CLI reference
+  data/                       # input / work / output (local runs)
 ```
+
+- **PyPI / pip:** `pip install resilient-stt` → CLI command **`resilient-stt`** (hyphen).
+- **Python imports:** `resilient_stt` (underscore), e.g. `from resilient_stt.orchestrator.pipeline import run`.
+- **From source:** `uv sync` then `uv run resilient-stt …` (or activate `.venv` and run `resilient-stt`).
 
 **PyPI package:** `resilient-stt`. **Import namespace:** `resilient_stt` (e.g.
 `from resilient_stt.core.schema import TranscriptSegment`). CLI entry point:
