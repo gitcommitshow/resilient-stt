@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file.
 Release versions and notes are managed by [release-please](https://github.com/googleapis/release-please)
 from [Conventional Commits](https://www.conventionalcommits.org/) on `main`.
 
+## [0.4.3](https://github.com/gitcommitshow/resilient-stt/compare/resilient-stt-v0.4.2...resilient-stt-v0.4.3) (2026-05-25)
+
+
+### Documentation
+
+* add banner in readme ([#18](https://github.com/gitcommitshow/resilient-stt/issues/18)) ([2ae5b6a](https://github.com/gitcommitshow/resilient-stt/commit/2ae5b6abf204221520cc772f0a7dadd449901dec))
+
 ## [0.4.2](https://github.com/gitcommitshow/resilient-stt/compare/resilient-stt-v0.4.1...resilient-stt-v0.4.2) (2026-05-25)
 
 
