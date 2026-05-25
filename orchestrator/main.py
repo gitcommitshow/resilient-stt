@@ -12,6 +12,7 @@ from asr.endpoint_client import OpenAICompatibleASRProvider
 
 from .asr_discovery import LOCAL_ASR_TIMEOUT_SEC, resolve_asr
 from .config import JobConfig
+from .openai_defaults import apply_openai_presets
 from .pipeline import run
 
 
@@ -108,7 +109,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--min-speakers", type=int, default=None)
     p.add_argument("--max-speakers", type=int, default=None)
 
-    p.add_argument("--repair", type=_bool_flag, default=False, help="Run LLM transcript repair.")
+    p.add_argument(
+        "--repair",
+        type=_bool_flag,
+        nargs="?",
+        const=True,
+        default=None,
+        help="Run LLM transcript repair (default: on when OPENAI_API_KEY is set).",
+    )
     p.add_argument("--align", action="store_true", help="Force forced-alignment stage.")
     p.add_argument("--resume", action="store_true", help="Reuse existing artifacts when present.")
     p.add_argument("--work-root", default="data/work")
@@ -117,7 +125,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _job_from_args(args: argparse.Namespace) -> JobConfig:
-    return JobConfig.from_env_and_args(
+    kwargs: dict = dict(
         audio_path=args.audio,
         output_dir=args.output,
         asr_base_url=args.asr_endpoint,
@@ -146,11 +154,15 @@ def _job_from_args(args: argparse.Namespace) -> JobConfig:
         num_speakers=args.num_speakers,
         min_speakers=args.min_speakers,
         max_speakers=args.max_speakers,
-        enable_repair=args.repair,
         enable_alignment=args.align,
         resume=args.resume,
         work_root=args.work_root,
     )
+    if args.repair is not None:
+        kwargs["enable_repair"] = args.repair
+    job = JobConfig.from_env_and_args(**kwargs)
+    apply_openai_presets(job, repair_cli=args.repair)
+    return job
 
 
 def _load_dotenv() -> None:
@@ -175,12 +187,18 @@ def cli(argv: list[str] | None = None) -> int:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
+    job = _job_from_args(args)
+    if job.enable_repair and job.repair_model:
+        logging.getLogger("resilient_stt.main").info(
+            "LLM repair enabled (model=%s, base=%s)",
+            job.repair_model,
+            job.repair_base_url,
+        )
     resolved = resolve_asr(
         asr_endpoint=args.asr_endpoint,
         asr_model=args.model,
         allow_fallback=not args.no_asr_fallback,
     )
-    job = _job_from_args(args)
     job.asr_base_url = resolved.base_url
     job.asr_model = resolved.model
     job.asr_provider_label = resolved.provider_label

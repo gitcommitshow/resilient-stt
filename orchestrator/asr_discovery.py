@@ -21,6 +21,12 @@ from asr.fallback_worker import (
 )
 from asr.probe import probe_asr_endpoint
 
+from .openai_defaults import (
+    DEFAULT_OPENAI_ASR_MODEL,
+    OPENAI_API_BASE_URL,
+    openai_api_key,
+)
+
 logger = logging.getLogger("resilient_stt.asr_discovery")
 
 DEFAULT_VLLM_BASE_URL = "http://127.0.0.1:8001/v1"
@@ -53,6 +59,53 @@ def _env_asr_endpoint() -> str | None:
     return None
 
 
+def _env_asr_api_key() -> str | None:
+    """Read an ASR bearer token from the environment."""
+    for key in ("ASR_API_KEY", "OPENAI_API_KEY"):
+        value = (os.getenv(key) or "").strip()
+        if value:
+            return value
+    return None
+
+
+def _default_model_for_endpoint(endpoint: str, asr_model: str | None) -> str:
+    """Pick a sensible default model id when the caller did not pass ``--model``."""
+    if asr_model:
+        return asr_model
+    if "api.openai.com" in endpoint:
+        return DEFAULT_OPENAI_ASR_MODEL
+    return DEFAULT_VLLM_MODEL
+
+
+def _resolve_openai_asr() -> ResolvedASR | None:
+    """Use hosted OpenAI transcription when reachable (caller checks prerequisites)."""
+    key = openai_api_key()
+    if not key:
+        return None
+    if not probe_asr_endpoint(OPENAI_API_BASE_URL, api_key=key):
+        return None
+    logger.info(
+        "Using OpenAI ASR at %s (model=%s)",
+        OPENAI_API_BASE_URL,
+        DEFAULT_OPENAI_ASR_MODEL,
+    )
+    return ResolvedASR(
+        base_url=OPENAI_API_BASE_URL,
+        model=DEFAULT_OPENAI_ASR_MODEL,
+        provider_label="openai-hosted",
+        source="openai",
+    )
+
+
+def _try_openai_asr(*, asr_model: str | None, asr_endpoint: str | None) -> ResolvedASR | None:
+    """OpenAI auto-detection: no explicit model/URL, key present, nothing local."""
+    if asr_model is not None:
+        return None
+    if asr_endpoint or _env_asr_endpoint():
+        return None
+    return _resolve_openai_asr()
+
+
 def resolve_asr(
     *,
     asr_endpoint: str | None = None,
@@ -63,12 +116,13 @@ def resolve_asr(
     explicit = (asr_endpoint or _env_asr_endpoint() or "").strip().rstrip("/") or None
 
     if explicit:
-        if not probe_asr_endpoint(explicit):
+        api_key = _env_asr_api_key()
+        if not probe_asr_endpoint(explicit, api_key=api_key):
             raise RuntimeError(
                 f"ASR endpoint configured but unreachable: {explicit}. "
                 "Start your ASR service or omit --asr-endpoint to auto-detect."
             )
-        model = asr_model or DEFAULT_VLLM_MODEL
+        model = _default_model_for_endpoint(explicit, asr_model)
         logger.info("Using configured ASR endpoint %s (model=%s)", explicit, model)
         return ResolvedASR(
             base_url=explicit,
@@ -96,6 +150,10 @@ def resolve_asr(
             provider_label="qwen-transformers-local",
             source="fallback-existing",
         )
+
+    openai = _try_openai_asr(asr_model=asr_model, asr_endpoint=asr_endpoint)
+    if openai is not None:
+        return openai
 
     if not allow_fallback:
         raise RuntimeError(

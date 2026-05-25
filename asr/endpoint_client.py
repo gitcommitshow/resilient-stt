@@ -12,6 +12,7 @@ import httpx
 from core.schema import ASRResult
 
 from .normalizer import normalize_response
+from .openai_request import build_transcription_fields
 
 
 class ASRProvider(abc.ABC):
@@ -88,7 +89,13 @@ class OpenAICompatibleASRProvider(ASRProvider):
                 )
                 if response.status_code >= 500:
                     raise httpx.HTTPStatusError(
-                        f"ASR server error {response.status_code}: {response.text[:200]}",
+                        f"ASR server error {response.status_code}: {response.text[:500]}",
+                        request=response.request,
+                        response=response,
+                    )
+                if response.status_code >= 400:
+                    raise httpx.HTTPStatusError(
+                        f"ASR client error {response.status_code}: {response.text[:500]}",
                         request=response.request,
                         response=response,
                     )
@@ -117,17 +124,12 @@ class OpenAICompatibleASRProvider(ASRProvider):
         if not path.exists():
             raise FileNotFoundError(f"Audio file not found: {path}")
 
-        # Form fields use the OpenAI convention with repeated keys for arrays.
-        fields: list[tuple[str, str]] = [
-            ("model", model),
-            ("response_format", "verbose_json"),
-            ("timestamp_granularities[]", "segment"),
-            ("timestamp_granularities[]", "word"),
-        ]
-        if language:
-            fields.append(("language", language))
-        if prompt:
-            fields.append(("prompt", prompt))
+        # Form fields depend on model capabilities (whisper-1 vs gpt-4o-transcribe, etc.).
+        fields = build_transcription_fields(
+            model,
+            language=language,
+            prompt=prompt,
+        )
 
         raw = self._post(path, fields)
         return normalize_response(
