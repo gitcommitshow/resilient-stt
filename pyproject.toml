@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "resilient-stt"
-version = "0.3.2"
+version = "0.4.0"
 description = "Speech-To-Text pipeline supporting all OpenAI-compatible Automatic Speech Recognition providers with added resilience and metadata through LLM-powered transcript repair, audio preprocessing, vad, and pyannote diarization"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
