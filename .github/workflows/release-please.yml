@@ -19,4 +19,6 @@ jobs:
         with:
           # PAT required so release:created triggers publish.yml (GITHUB_TOKEN does not).
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          # Python simple mode: version from GitHub releases + pyproject.toml bumps.
           release-type: python
+          include-component-in-tag: true
