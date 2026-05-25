@@ -26,6 +26,12 @@ from .openai_defaults import (
     OPENAI_API_BASE_URL,
     openai_api_key,
 )
+from .openrouter_defaults import (
+    DEFAULT_OPENROUTER_ASR_MODEL,
+    OPENROUTER_API_BASE_URL,
+    is_openrouter_endpoint,
+    openrouter_api_key,
+)
 
 logger = logging.getLogger("resilient_stt.asr_discovery")
 
@@ -61,7 +67,7 @@ def _env_asr_endpoint() -> str | None:
 
 def _env_asr_api_key() -> str | None:
     """Read an ASR bearer token from the environment."""
-    for key in ("ASR_API_KEY", "OPENAI_API_KEY"):
+    for key in ("ASR_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"):
         value = (os.getenv(key) or "").strip()
         if value:
             return value
@@ -72,9 +78,40 @@ def _default_model_for_endpoint(endpoint: str, asr_model: str | None) -> str:
     """Pick a sensible default model id when the caller did not pass ``--model``."""
     if asr_model:
         return asr_model
+    if is_openrouter_endpoint(endpoint):
+        return DEFAULT_OPENROUTER_ASR_MODEL
     if "api.openai.com" in endpoint:
         return DEFAULT_OPENAI_ASR_MODEL
     return DEFAULT_VLLM_MODEL
+
+
+def _resolve_openrouter_asr() -> ResolvedASR | None:
+    """Use hosted OpenRouter STT when reachable (caller checks prerequisites)."""
+    key = openrouter_api_key()
+    if not key:
+        return None
+    if not probe_asr_endpoint(OPENROUTER_API_BASE_URL, api_key=key):
+        return None
+    logger.info(
+        "Using OpenRouter ASR at %s (model=%s)",
+        OPENROUTER_API_BASE_URL,
+        DEFAULT_OPENROUTER_ASR_MODEL,
+    )
+    return ResolvedASR(
+        base_url=OPENROUTER_API_BASE_URL,
+        model=DEFAULT_OPENROUTER_ASR_MODEL,
+        provider_label="openrouter-hosted",
+        source="openrouter",
+    )
+
+
+def _try_openrouter_asr(*, asr_model: str | None, asr_endpoint: str | None) -> ResolvedASR | None:
+    """OpenRouter auto-detection: no explicit model/URL, key present, nothing local."""
+    if asr_model is not None:
+        return None
+    if asr_endpoint or _env_asr_endpoint():
+        return None
+    return _resolve_openrouter_asr()
 
 
 def _resolve_openai_asr() -> ResolvedASR | None:
@@ -123,11 +160,12 @@ def resolve_asr(
                 "Start your ASR service or omit --asr-endpoint to auto-detect."
             )
         model = _default_model_for_endpoint(explicit, asr_model)
+        label = "openrouter-hosted" if is_openrouter_endpoint(explicit) else "external-openai-compatible"
         logger.info("Using configured ASR endpoint %s (model=%s)", explicit, model)
         return ResolvedASR(
             base_url=explicit,
             model=model,
-            provider_label="external-openai-compatible",
+            provider_label=label,
             source="configured",
         )
 
@@ -150,6 +188,10 @@ def resolve_asr(
             provider_label="qwen-transformers-local",
             source="fallback-existing",
         )
+
+    openrouter = _try_openrouter_asr(asr_model=asr_model, asr_endpoint=asr_endpoint)
+    if openrouter is not None:
+        return openrouter
 
     openai = _try_openai_asr(asr_model=asr_model, asr_endpoint=asr_endpoint)
     if openai is not None:

@@ -13,6 +13,7 @@ from core.schema import ASRResult
 
 from .normalizer import normalize_response
 from .openai_request import build_transcription_fields
+from .openrouter_request import audio_format_for_path, build_transcription_json
 
 
 class ASRProvider(abc.ABC):
@@ -139,4 +140,103 @@ class OpenAICompatibleASRProvider(ASRProvider):
             chunk_id=chunk_id or path.stem,
             start_offset=start_offset,
             language=language,
+        )
+
+
+class OpenRouterASRProvider(ASRProvider):
+    """Talks to OpenRouter ``POST /api/v1/audio/transcriptions`` (JSON + base64 audio)."""
+
+    name = "openrouter"
+
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str | None = None,
+        provider_label: str | None = None,
+        timeout: float = 600.0,
+        max_retries: int = 3,
+        retry_backoff_sec: float = 1.5,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        if self.base_url.endswith("/audio/transcriptions"):
+            self.base_url = self.base_url[: -len("/audio/transcriptions")]
+        self.api_key = api_key
+        self.timeout = timeout
+        self.max_retries = max_retries
+        self.retry_backoff_sec = retry_backoff_sec
+        self.provider_label = provider_label or self.name
+
+    def _endpoint(self) -> str:
+        return f"{self.base_url}/audio/transcriptions"
+
+    def _headers(self) -> dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        return headers
+
+    def _post_json(self, audio_path: Path, model: str, language: str | None) -> dict[str, Any]:
+        """POST base64-encoded audio JSON to OpenRouter STT."""
+        audio_bytes = audio_path.read_bytes()
+        payload = build_transcription_json(
+            model,
+            audio_bytes,
+            audio_format=audio_format_for_path(audio_path),
+            language=language,
+        )
+        last_exc: Exception | None = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                response = httpx.post(
+                    self._endpoint(),
+                    headers=self._headers(),
+                    json=payload,
+                    timeout=self.timeout,
+                )
+                if response.status_code >= 500:
+                    raise httpx.HTTPStatusError(
+                        f"ASR server error {response.status_code}: {response.text[:500]}",
+                        request=response.request,
+                        response=response,
+                    )
+                if response.status_code >= 400:
+                    raise httpx.HTTPStatusError(
+                        f"ASR client error {response.status_code}: {response.text[:500]}",
+                        request=response.request,
+                        response=response,
+                    )
+                response.raise_for_status()
+                return response.json()
+            except (httpx.TransportError, httpx.HTTPStatusError) as exc:
+                last_exc = exc
+                if attempt >= self.max_retries:
+                    break
+                time.sleep(self.retry_backoff_sec * attempt)
+        raise RuntimeError(f"OpenRouter ASR failed after {self.max_retries} attempts: {last_exc}")
+
+    def transcribe(
+        self,
+        audio_path: str | Path,
+        model: str,
+        language: str | None = None,
+        prompt: str | None = None,
+        chunk_id: str | None = None,
+        start_offset: float = 0.0,
+    ) -> ASRResult:
+        path = Path(audio_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Audio file not found: {path}")
+        if prompt:
+            # OpenRouter STT has no prompt field; ignore rather than fail.
+            pass
+
+        raw = self._post_json(path, model, language)
+        return normalize_response(
+            raw,
+            provider=self.provider_label,
+            model=model,
+            chunk_id=chunk_id or path.stem,
+            start_offset=start_offset,
+            language=language,
+            fallback_end=start_offset,
         )

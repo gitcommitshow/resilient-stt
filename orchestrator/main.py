@@ -8,11 +8,12 @@ import sys
 
 from core.privacy import disable_dependency_telemetry
 
-from asr.endpoint_client import OpenAICompatibleASRProvider
+from asr.endpoint_client import OpenAICompatibleASRProvider, OpenRouterASRProvider
 
 from .asr_discovery import LOCAL_ASR_TIMEOUT_SEC, resolve_asr
 from .config import JobConfig
 from .openai_defaults import apply_openai_presets
+from .openrouter_defaults import apply_openrouter_presets, is_openrouter_endpoint
 from .pipeline import run
 
 
@@ -161,7 +162,8 @@ def _job_from_args(args: argparse.Namespace) -> JobConfig:
     if args.repair is not None:
         kwargs["enable_repair"] = args.repair
     job = JobConfig.from_env_and_args(**kwargs)
-    apply_openai_presets(job, repair_cli=args.repair)
+    if not apply_openrouter_presets(job, repair_cli=args.repair):
+        apply_openai_presets(job, repair_cli=args.repair)
     return job
 
 
@@ -207,7 +209,11 @@ def cli(argv: list[str] | None = None) -> int:
         if resolved.provider_label == "qwen-transformers-local"
         else 600.0
     )
-    asr_provider = OpenAICompatibleASRProvider(
+    use_openrouter = resolved.provider_label == "openrouter-hosted" or is_openrouter_endpoint(
+        resolved.base_url
+    )
+    provider_cls = OpenRouterASRProvider if use_openrouter else OpenAICompatibleASRProvider
+    asr_provider = provider_cls(
         base_url=resolved.base_url,
         api_key=job.asr_api_key,
         provider_label=resolved.provider_label,

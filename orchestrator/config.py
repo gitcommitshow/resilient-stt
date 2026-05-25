@@ -87,13 +87,13 @@ class JobConfig:
         """Convenience builder that fills secrets/defaults from environment variables."""
 
         if kwargs.get("asr_api_key") is None:
-            for key in ("ASR_API_KEY", "OPENAI_API_KEY"):
+            for key in ("ASR_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"):
                 value = (os.getenv(key) or "").strip()
                 if value:
                     kwargs["asr_api_key"] = value
                     break
         if kwargs.get("repair_api_key") is None:
-            for key in ("REPAIR_API_KEY", "OPENAI_API_KEY"):
+            for key in ("REPAIR_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"):
                 value = (os.getenv(key) or "").strip()
                 if value:
                     kwargs["repair_api_key"] = value
