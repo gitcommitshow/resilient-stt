@@ -6,45 +6,64 @@ A provider-agnostic speech-to-text pipeline that plugs into **any OpenAI-compati
 
 ## Features
 
-- **Any ASR provider** — Point at any service that implements `POST /v1/audio/transcriptions` (or OpenRouter STT); swap models with flags, not code changes.
-- **Resilient ASR discovery** — Auto-detects local workers and hosted APIs, retries failed requests, and starts a bundled Qwen fallback when nothing else is reachable.
-- **Audio preprocessing** — ffmpeg normalization to mono 16 kHz WAV with optional enhancement before transcription.
-- **Voice activity detection** — Silero, webrtcvad, or RMS fallback to skip silence and focus compute on speech.
-- **Smart chunking & stitching** — Fixed or pause-aligned chunks for long files, with global word and segment timestamps stitched back together.
-- **Speaker diarization** — pyannote on the full audio, with word-level speaker assignment (IoU + segment fallback).
-- **LLM transcript repair** — Optional two-pass repair via any OpenAI-compatible chat endpoint, with validation to preserve timing and mixed-script Hinglish.
-- **Rich exports** — JSON, SRT, and VTT with segments, words, speakers, and pipeline metadata.
-- **Lightweight orchestrator** — No ASR model weights in the core package; inference stays in the microservice you choose.
-- **CLI and Python API** — `resilient-stt` from the terminal, or `pipeline.run(JobConfig)` for programmatic use.
-
-> **Experimental:** This project is under active development and is **not production-ready**. Expect breaking changes, incomplete features, and behavior that may shift between releases. Use for evaluation and prototyping only.
+- **Universal ASR** — Connect to any OpenAI-compatible endpoint, switching models easily by flag.
+- **Automatic Discovery** — Finds local or remote ASR, retries if needed, starts Qwen fallback automatically.
+- **Seamless Audio Prep** — Effortless ffmpeg normalization, optional enhancement.
+- **Smart Silence Skipping** — Uses Silero, webrtcvad, or RMS to focus only on speech.
+- **Chunking & Stitching** — Handles long audio with intelligent segmentation, accurate timestamps.
+- **Speaker Diarization** — Word-level speakers with pyannote.
+- **LLM Repair** — Optional transcript refinement via your preferred chat endpoint.
+- **Versatile Export** — Output to JSON, SRT, and VTT including rich metadata.
+- **Lightweight** — Orchestrator only; no model weights required.
+- **CLI & Python API** — Use via terminal or integrate in code.
 
 **Architecture & design decisions:** [docs/design.md](docs/design.md)
 
 **CLI reference:** [docs/cli.md](docs/cli.md)
 
-## Repository layout
+## Quickstart
 
-```text
-resilient-stt/
-  src/resilient_stt/          # installable package (PyPI name: resilient-stt)
-    orchestrator/             # CLI, pipeline, ASR discovery
-    core/                     # audio, VAD, chunking, schemas, exports
-    asr/                      # OpenAI-compatible ASR client, fallback worker
-    diarization/              # pyannote + speaker assignment
-    alignment/                # optional aligner (stubs in v1)
-    repair/                   # LLM transcript repair
-    workers/                  # bundled qwen-asr HTTP service (shipped in wheel)
-  workers/                    # docs for optional ASR workers (vLLM, Whisper, …)
-  scripts/                    # bootstrap helpers (not installed from PyPI)
-  tests/
-  docs/
-  data/                       # input / work / output (local runs)
+Prerequisites: **Python 3.11 or 3.12**, **ffmpeg** on PATH.
+
+```bash
+pip install "resilient-stt[full]"   # minimal: pip install resilient-stt (no pyannote/Silero)
+
+resilient-stt \
+  --audio /path/to/audio.wav \
+  --output /path/to/output-dir \
+  --language hi
+
+# Output (under --output):
+#   transcript.json   — segments, words, speakers, repair metadata
+#   transcript.srt    — subtitles
+#   transcript.vtt    — WebVTT
+#
+# Example transcript.json (truncated):
+# {
+#   "audio_file": "/path/to/audio.wav",
+#   "duration": 142.5,
+#   "language": "hi",
+#   "asr_provider": "qwen-asr-fallback",
+#   "asr_model": "Qwen/Qwen3-ASR-0.6B",
+#   "segments": [{
+#     "speaker": "SPEAKER_00",
+#     "start": 0.12,
+#     "end": 4.85,
+#     "raw_text": "Namaste, aaj hum meeting shuru karte hain.",
+#     "clean_text": "Namaste, aaj hum meeting shuru karte hain.",
+#     "repair_status": "unchanged",
+#     "words": [{ "word": "Namaste,", "start": 0.12, "end": 0.58, "speaker": "SPEAKER_00" }]
+#   }]
+# }
 ```
 
-- **PyPI / pip:** `pip install resilient-stt` → CLI command **`resilient-stt`** (hyphen).
-- **Python imports:** `resilient_stt` (underscore), e.g. `from resilient_stt.orchestrator.pipeline import run`.
-- **From source:** `uv sync` then `uv run resilient-stt …` (or activate `.venv` and run `resilient-stt`).
+No ASR setup required — the CLI auto-detects local workers and hosted APIs, or starts a bundled Qwen worker. Quick smoke test without pyannote or repair: add `--skip-diarization --repair false`. For OpenAI or OpenRouter, set `OPENAI_API_KEY` or `OPENROUTER_API_KEY` in `.env` and pass `--no-asr-fallback`. Full flags: [docs/cli.md](docs/cli.md). Repository layout: [docs/design.md](docs/design.md#4-repository-layout).
+
+
+> **Note**
+> 
+> 🚧 Active development – not production-ready.  
+> Expect changes, incomplete features, and ongoing improvements.
 
 ## Architecture
 
@@ -167,8 +186,6 @@ Today, alignment runs only when `--align` is set or ASR returned weak
 timestamps; the default aligner is a no-op pass-through.
 
 ## Install (PyPI)
-
-Prerequisites: **Python 3.11 or 3.12**, **ffmpeg** on PATH.
 
 ```bash
 # Minimal orchestrator (webrtcvad VAD; ASR via API or bundled qwen worker)
