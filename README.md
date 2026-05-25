@@ -2,6 +2,8 @@
 
 **The only Speech-To-Text pipeline you need.**
 
+![banner](./banner.png)
+
 A provider-agnostic speech-to-text pipeline that plugs into **any OpenAI-compatible ASR endpoint** — OpenAI, OpenRouter, vLLM, faster-whisper, or the bundled Qwen worker — and returns rich, timestamped transcripts with speaker labels and validated metadata. Resilient STT handles everything around inference: audio preprocessing, voice-activity detection, intelligent chunking, pyannote diarization, and LLM-powered transcript repair. Tested on English, Hindi, and Hinglish but it is designed to support all the languages the ASR model of your choice supports.
 
 ## Features
