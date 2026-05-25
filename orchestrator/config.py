@@ -86,10 +86,20 @@ class JobConfig:
     def from_env_and_args(cls, **kwargs) -> "JobConfig":
         """Convenience builder that fills secrets/defaults from environment variables."""
 
-        kwargs.setdefault("asr_api_key", os.getenv("ASR_API_KEY"))
+        if kwargs.get("asr_api_key") is None:
+            for key in ("ASR_API_KEY", "OPENAI_API_KEY"):
+                value = (os.getenv(key) or "").strip()
+                if value:
+                    kwargs["asr_api_key"] = value
+                    break
+        if kwargs.get("repair_api_key") is None:
+            for key in ("REPAIR_API_KEY", "OPENAI_API_KEY"):
+                value = (os.getenv(key) or "").strip()
+                if value:
+                    kwargs["repair_api_key"] = value
+                    break
         kwargs.setdefault("repair_base_url", os.getenv("REPAIR_BASE_URL"))
         kwargs.setdefault("repair_model", os.getenv("REPAIR_MODEL"))
-        kwargs.setdefault("repair_api_key", os.getenv("REPAIR_API_KEY"))
         kwargs.setdefault("hf_token", os.getenv("HF_TOKEN"))
         return cls(**kwargs)
 
