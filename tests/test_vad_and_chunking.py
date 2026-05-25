@@ -7,8 +7,8 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
-from core.chunking import materialize_chunks, plan_chunks
-from core.vad import detect_speech_regions
+from resilient_stt.core.chunking import materialize_chunks, plan_chunks
+from resilient_stt.core.vad import detect_speech_regions
 
 
 def _write_silent_with_speech_burst(path: Path, *, sr: int = 16000) -> float:

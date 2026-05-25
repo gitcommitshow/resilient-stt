@@ -9,7 +9,7 @@ from typing import Any
 
 import httpx
 
-from core.schema import ASRResult
+from resilient_stt.core.schema import ASRResult
 
 from .normalizer import normalize_response
 from .openai_request import build_transcription_fields

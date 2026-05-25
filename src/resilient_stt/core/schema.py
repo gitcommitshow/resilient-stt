@@ -73,7 +73,7 @@ class ASRResult(_Base):
 
 
 class DiarizationTurn(_Base):
-    """A single speaker turn from diarization."""
+    """A single speaker turn from resilient_stt.diarization."""
 
     speaker: str
     start: float

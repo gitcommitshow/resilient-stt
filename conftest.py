@@ -1,12 +1,5 @@
-"""Make repo root importable so `import core` etc. works in tests without install."""
+"""Pytest hooks: disable third-party telemetry before any tests run."""
 
-import sys
-from pathlib import Path
-
-_ROOT = Path(__file__).resolve().parent
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
-
-from core.privacy import disable_dependency_telemetry  # noqa: E402
+from resilient_stt.core.privacy import disable_dependency_telemetry
 
 disable_dependency_telemetry()

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from core.privacy import apply_telemetry_env, disable_dependency_telemetry
+from resilient_stt.core.privacy import apply_telemetry_env, disable_dependency_telemetry
 
 
 def test_disable_dependency_telemetry_sets_opt_out_defaults(monkeypatch) -> None:

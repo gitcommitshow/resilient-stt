@@ -49,11 +49,8 @@ curl -X POST http://localhost:8001/v1/audio/transcriptions \
 
 ## Workers
 
-- `qwen_transformers_service/` — **Implemented.** qwen-asr on CPU/MPS; auto-started
-  by the orchestrator or via `python scripts/bootstrap_qwen_asr_fallback.py` (see
-  [qwen_transformers_service/README.md](qwen_transformers_service/README.md)).
-- `qwen_vllm_service/` — Qwen3-ASR via vLLM (Linux + NVIDIA); optional bootstrap:
-  `python scripts/bootstrap_vllm_qwen3_asr.py --install` (see
-  [qwen_vllm_service/README.md](qwen_vllm_service/README.md)).
-- `parakeet_openai_service/` — Placeholder: wrap NeMo/Parakeet behind the OpenAI shape.
-- `whisper_openai_service/` — Placeholder: wrap faster-whisper / whisper.cpp behind the OpenAI shape.
+- **Bundled (in PyPI wheel):** [`src/resilient_stt/workers/qwen_transformers_service/`](../src/resilient_stt/workers/qwen_transformers_service/README.md) — qwen-asr on CPU/MPS; auto-started by the orchestrator or via `python scripts/bootstrap_qwen_asr_fallback.py` from a git checkout.
+- **Documented only (under repo `workers/`):**
+  - [`qwen_vllm_service/`](qwen_vllm_service/README.md) — Qwen3-ASR via vLLM (Linux + NVIDIA); bootstrap: `python scripts/bootstrap_vllm_qwen3_asr.py --install`
+  - [`parakeet_openai_service/`](parakeet_openai_service/README.md) — Placeholder: wrap NeMo/Parakeet behind the OpenAI shape
+  - [`whisper_openai_service/`](whisper_openai_service/README.md) — Placeholder: wrap faster-whisper / whisper.cpp behind the OpenAI shape

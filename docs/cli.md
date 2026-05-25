@@ -6,13 +6,32 @@ platform notes, see [README.md](../README.md).
 
 ---
 
+## Install
+
+| Method | Command |
+|--------|---------|
+| **PyPI** | `pip install resilient-stt` or `pip install "resilient-stt[full]"` |
+| **From source** | `uv sync --extra full --extra dev` in the repo root |
+
+**CLI name:** `resilient-stt` (hyphen). Do not use `resilient_stt` as a shell command.
+
+| Context | How to run |
+|---------|------------|
+| After `pip install` | `resilient-stt [OPTIONS]` |
+| Git checkout | `uv run resilient-stt [OPTIONS]` or activate `.venv` and `resilient-stt` |
+| Module (debug) | `python -m resilient_stt.orchestrator.main [OPTIONS]` |
+
+Package imports use the underscore namespace: `resilient_stt.*` (see [design.md](design.md) §4).
+
+---
+
 ## Invocation
 
 ```bash
-uv run python -m orchestrator.main [OPTIONS]
+resilient-stt [OPTIONS]
 ```
 
-The CLI loads `.env` from the repo root on startup (via `python-dotenv`). Shell
+The CLI loads `.env` from the **current working directory** on startup (via `python-dotenv`). Shell
 exports take precedence over `.env` values. See [`.env.example`](../.env.example)
 for a template.
 
@@ -84,7 +103,7 @@ cloud when it responds.
 Set `OPENROUTER_API_KEY` or use explicit endpoint:
 
 ```bash
-uv run python -m orchestrator.main \
+resilient-stt \
   --audio data/input/speech.wav \
   --output data/output/run \
   --asr-endpoint https://openrouter.ai/api/v1 \
@@ -216,10 +235,12 @@ Opt back in via shell or `.env`:
 
 ## Example commands
 
+Examples use `resilient-stt` (as after `pip install`). From a git checkout, prefix with `uv run`.
+
 **Minimal (local qwen-asr auto-start):**
 
 ```bash
-uv run python -m orchestrator.main \
+resilient-stt \
   --audio data/input/meeting.mp3 \
   --output data/output/meeting \
   --language hi
@@ -228,7 +249,7 @@ uv run python -m orchestrator.main \
 **vLLM ASR:**
 
 ```bash
-uv run python -m orchestrator.main \
+resilient-stt \
   --audio data/input/meeting.mp3 \
   --output data/output/meeting \
   --asr-endpoint http://127.0.0.1:8001/v1 \
@@ -240,7 +261,7 @@ uv run python -m orchestrator.main \
 **OpenRouter ASR (explicit):**
 
 ```bash
-uv run python -m orchestrator.main \
+resilient-stt \
   --audio data/input/speech.wav \
   --output data/output/openrouter \
   --asr-endpoint https://openrouter.ai/api/v1 \
@@ -252,7 +273,7 @@ uv run python -m orchestrator.main \
 **Music / non-speech (skip VAD):**
 
 ```bash
-uv run python -m orchestrator.main \
+resilient-stt \
   --audio data/input/music.wav \
   --output data/output/music \
   --asr-endpoint https://openrouter.ai/api/v1 \
@@ -265,7 +286,7 @@ uv run python -m orchestrator.main \
 **Resume after interruption:**
 
 ```bash
-uv run python -m orchestrator.main \
+resilient-stt \
   --audio data/input/meeting.mp3 \
   --output data/output/meeting \
   --resume
@@ -295,6 +316,16 @@ Final exports land under `--output`.
 
 ## Programmatic use
 
-The CLI is a thin wrapper around `orchestrator.pipeline.run(JobConfig)`. For
-embedding in other tools or services, construct a `JobConfig` and pass an
-`ASRProvider` instance directly. See [design.md](design.md) §1.
+The CLI is a thin wrapper around `resilient_stt.orchestrator.pipeline.run(JobConfig)`. For
+embedding in other tools or services, install the package and use:
+
+```python
+from resilient_stt.orchestrator.config import JobConfig
+from resilient_stt.orchestrator.pipeline import run
+from resilient_stt.asr.endpoint_client import OpenAICompatibleASRProvider
+
+# Build JobConfig (from CLI args or your own), pass an ASRProvider, then:
+# run(config, asr_provider)
+```
+
+See [design.md](design.md) §1 and §5.10.

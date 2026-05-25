@@ -7,6 +7,31 @@ The orchestrator owns chunking, diarization, repair, and exports; ASR inference 
 
 **Architecture & design decisions:** [docs/design.md](docs/design.md)
 
+**CLI reference:** [docs/cli.md](docs/cli.md)
+
+## Repository layout
+
+```text
+resilient-stt/
+  src/resilient_stt/          # installable package (PyPI name: resilient-stt)
+    orchestrator/             # CLI, pipeline, ASR discovery
+    core/                     # audio, VAD, chunking, schemas, exports
+    asr/                      # OpenAI-compatible ASR client, fallback worker
+    diarization/              # pyannote + speaker assignment
+    alignment/                # optional aligner (stubs in v1)
+    repair/                   # LLM transcript repair
+    workers/                  # bundled qwen-asr HTTP service (shipped in wheel)
+  workers/                    # docs for optional ASR workers (vLLM, Whisper, …)
+  scripts/                    # bootstrap helpers (not installed from PyPI)
+  tests/
+  docs/
+  data/                       # input / work / output (local runs)
+```
+
+- **PyPI / pip:** `pip install resilient-stt` → CLI command **`resilient-stt`** (hyphen).
+- **Python imports:** `resilient_stt` (underscore), e.g. `from resilient_stt.orchestrator.pipeline import run`.
+- **From source:** `uv sync` then `uv run resilient-stt …` (or activate `.venv` and run `resilient-stt`).
+
 ## Architecture
 
 ```
@@ -87,7 +112,7 @@ The orchestrator sends 16 kHz mono WAV chunks.
 
 | Worker | Endpoint (default) | Example `--model` | Status |
 | ------ | ------------------ | ----------------- | ------ |
-| [qwen_transformers_service](workers/qwen_transformers_service/README.md) | `http://127.0.0.1:8002/v1` | `Qwen/Qwen3-ASR-0.6B` | **Bundled** — auto-started when no other ASR is reachable |
+| [qwen_transformers_service](src/resilient_stt/workers/qwen_transformers_service/README.md) | `http://127.0.0.1:8002/v1` | `Qwen/Qwen3-ASR-0.6B` | **Bundled** — auto-started when no other ASR is reachable |
 | [qwen_vllm_service](workers/qwen_vllm_service/README.md) | `http://127.0.0.1:8001/v1` | `Qwen/Qwen3-ASR-1.7B` | **Bundled bootstrap** — Linux + NVIDIA GPU |
 | Custom (faster-whisper, vLLM, hosted proxy, etc.) | Your URL | Your model id | **Supported** — implement or deploy separately |
 | [whisper_openai_service](workers/whisper_openai_service/README.md) | — | — | **Planned Roadmap** |
@@ -121,13 +146,74 @@ Any OpenAI-compatible **`/chat/completions`** endpoint. Set `REPAIR_BASE_URL`,
 
 | Component | Status |
 | --------- | ------ |
-| Qwen forced aligner (`alignment/qwen_aligner.py`) | **Planned Roadmap** |
+| Qwen forced aligner (`src/resilient_stt/alignment/qwen_aligner.py`) | **Planned Roadmap** |
 | WhisperX | **Planned Roadmap** |
 
 Today, alignment runs only when `--align` is set or ASR returned weak
 timestamps; the default aligner is a no-op pass-through.
 
-## Install (uv)
+## Install (PyPI)
+
+Prerequisites: **Python 3.11 or 3.12**, **ffmpeg** on PATH.
+
+```bash
+# Minimal orchestrator (webrtcvad VAD; ASR via API or bundled qwen worker)
+pip install resilient-stt
+
+# Recommended on Apple Silicon / Linux (Silero VAD + pyannote diarization + torch)
+pip install "resilient-stt[full]"
+
+# Contributors
+pip install "resilient-stt[full,dev]"
+```
+
+Verify the CLI:
+
+```bash
+resilient-stt --help
+```
+
+### Usage after `pip install`
+
+Run from any directory (creates `data/work/` under the current working dir unless you pass `--work-root`):
+
+```bash
+resilient-stt \
+  --audio /path/to/audio.wav \
+  --output /path/to/output-dir \
+  --language hi
+```
+
+With diarization and Silero VAD you need the `[full]` extra and usually `HF_TOKEN` in `.env` (see [Environment variables](#environment-variables)). Quick smoke test without pyannote:
+
+```bash
+resilient-stt \
+  --audio /path/to/audio.wav \
+  --output /path/to/output-dir \
+  --language hi \
+  --skip-diarization \
+  --repair false
+```
+
+Hosted ASR (no local qwen worker) — set `OPENAI_API_KEY` or `OPENROUTER_API_KEY` in `.env`:
+
+```bash
+resilient-stt \
+  --audio /path/to/audio.wav \
+  --output /path/to/output-dir \
+  --no-asr-fallback \
+  --skip-diarization
+```
+
+**Bundled qwen-asr worker:** On first auto-start, the CLI creates an isolated venv at
+`~/.cache/resilient-stt/qwen-transformers-worker/.venv` (requires network to download
+`qwen-asr` and model weights). If inference fails on Apple Silicon, start the worker
+manually with `python scripts/bootstrap_qwen_asr_fallback.py --no-aligner` (from a git
+checkout) or see the [bundled worker README](src/resilient_stt/workers/qwen_transformers_service/README.md).
+
+Platform notes for `[full]` match [Platform notes (torch / diarization)](#platform-notes-torch--diarization) below (Intel Mac: base install + `--skip-diarization`).
+
+## Install from source (uv)
 
 Prerequisites: [uv](https://docs.astral.sh/uv/), **ffmpeg** on PATH. ASR is optional to
 configure manually — see [ASR auto-detection](#asr-auto-detection) below.
@@ -192,19 +278,21 @@ uv run python -c "import torch; print('mps', torch.backends.mps.is_available())"
 
 ## Usage
 
+From a **git checkout**, prefix commands with `uv run` (or activate `.venv` and use `resilient-stt` directly). After **`pip install`**, use `resilient-stt` only.
+
 Minimal run (no ASR setup — auto-starts local **qwen-asr** on CPU/MPS when needed):
 
 ```bash
-uv run python -m orchestrator.main \
+uv run resilient-stt \
   --audio data/input/meeting.mp3 \
   --output data/output/meeting \
   --language hi
 ```
 
-With an external ASR service (vLLM, hosted API, etc.):
+With an external ASR service (vLLM, hosted API, etc.) — the endpoint must already be running and respond to `GET {base}/v1/models`:
 
 ```bash
-uv run python -m orchestrator.main \
+uv run resilient-stt \
   --audio data/input/meeting.mp3 \
   --asr-endpoint http://localhost:8001/v1 \
   --model Qwen/Qwen3-ASR-1.7B \
@@ -218,14 +306,14 @@ auto-detect (no local ASR on `:8001`/`:8002`) or point at the API explicitly:
 
 ```bash
 # Auto-detect when no local ASR is running (--no-asr-fallback avoids starting qwen-asr)
-uv run python -m orchestrator.main \
+uv run resilient-stt \
   --audio data/input/speech.wav \
   --output data/output/openai \
   --no-asr-fallback \
   --skip-diarization
 
 # Explicit endpoint
-uv run python -m orchestrator.main \
+uv run resilient-stt \
   --audio data/input/speech.wav \
   --output data/output/openai \
   --asr-endpoint https://api.openai.com/v1 \
@@ -237,7 +325,7 @@ uv run python -m orchestrator.main \
 the key via `ASR_API_KEY`:
 
 ```bash
-uv run python -m orchestrator.main \
+uv run resilient-stt \
   --audio data/input/speech.wav \
   --output data/output/openrouter/chirp \
   --asr-endpoint https://openrouter.ai/api/v1 \
@@ -257,9 +345,11 @@ When `--asr-endpoint` is omitted (and `ASR_BASE_URL` / `ASR_ENDPOINT` are unset)
 2. Probe an existing **qwen-asr** worker at `http://127.0.0.1:8002/v1`
 3. **OpenRouter** when `OPENROUTER_API_KEY` is set (no `--model`)
 4. **OpenAI** when `OPENAI_API_KEY` is set (no `--model`)
-5. Otherwise **start** the local qwen-asr fallback ([workers/qwen_transformers_service/README.md](workers/qwen_transformers_service/README.md)) — slow on CPU/MPS but needs no NVIDIA GPU
+5. Otherwise **start** the local qwen-asr fallback ([bundled worker](src/resilient_stt/workers/qwen_transformers_service/README.md)) — slow on CPU/MPS but needs no NVIDIA GPU
 
 Use `--no-asr-fallback` to require an explicit or already-running ASR service.
+
+If you pass `--asr-endpoint` explicitly, that URL must respond to `GET …/v1/models` before the pipeline runs (otherwise the CLI exits with “endpoint configured but unreachable”).
 
 Useful flags:
 
@@ -340,12 +430,21 @@ Final exports land under `--output`: `transcript.json`, `transcript.srt`,
 
 ## Tests
 
+From source:
+
 ```bash
+uv sync --extra dev
 uv run pytest
 ```
 
+After `pip install "resilient-stt[dev]"` from a checkout (with `src/` on `PYTHONPATH`) or when developing in the repo, the same `pytest` command applies if `src` is configured in `pyproject.toml` (`pythonpath = ["src"]`).
+
 The included tests use synthetic fixtures and mocked HTTP responses; they do
 not invoke ffmpeg, pyannote, or any LLM.
+
+## Publishing (maintainers)
+
+Releases are published to [PyPI](https://pypi.org/project/resilient-stt/) via GitHub Actions when a tag `vX.Y.Z` is pushed and matches `version` in `pyproject.toml`. Configure a [PyPI trusted publisher](https://docs.pypi.org/trusted-publishers/) for workflow `publish.yml` on repo `gitcommitshow/resilient-stt`.
 
 ## License
 

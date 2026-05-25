@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.schema import ASRResult, ASRSegment, ASRWord
+from resilient_stt.core.schema import ASRResult, ASRSegment, ASRWord
 
 
 def _coerce_float(value: Any) -> float | None:

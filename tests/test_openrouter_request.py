@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from asr.openrouter_request import audio_format_for_path, build_transcription_json
-from orchestrator.asr_discovery import DEFAULT_OPENROUTER_ASR_MODEL, resolve_asr
+from resilient_stt.asr.openrouter_request import audio_format_for_path, build_transcription_json
+from resilient_stt.orchestrator.asr_discovery import DEFAULT_OPENROUTER_ASR_MODEL, resolve_asr
 
 
 def test_build_transcription_json_encodes_wav_payload() -> None:
@@ -37,7 +37,7 @@ def test_resolve_uses_openrouter_when_local_unavailable(monkeypatch: pytest.Monk
     def fake_probe(url: str, timeout_sec: float = 2.0, api_key: str | None = None) -> bool:
         return url == "https://openrouter.ai/api/v1" and api_key == "sk-or-test"
 
-    monkeypatch.setattr("orchestrator.asr_discovery.probe_asr_endpoint", fake_probe)
+    monkeypatch.setattr("resilient_stt.orchestrator.asr_discovery.probe_asr_endpoint", fake_probe)
 
     resolved = resolve_asr(allow_fallback=False)
 

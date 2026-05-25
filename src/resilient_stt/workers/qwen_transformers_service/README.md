@@ -11,13 +11,13 @@ python scripts/bootstrap_qwen_asr_fallback.py --install-only
 python scripts/bootstrap_qwen_asr_fallback.py
 ```
 
-Creates `workers/qwen_transformers_service/.venv`, installs `qwen-asr` (Apache-2.0), and listens on
+Creates `~/.cache/resilient-stt/qwen-transformers-worker/.venv`, installs `qwen-asr` (Apache-2.0), and listens on
 `http://127.0.0.1:8002/v1` with **`Qwen/Qwen3-ASR-0.6B`** by default (lighter for CPU/MPS).
 
 ## Auto-start from orchestrator
 
 ```text
-uv run python -m orchestrator.main \
+resilient-stt \
   --audio data/input/meeting.mp3 \
   --output data/output/meeting \
   --language hi
@@ -35,7 +35,7 @@ Pass `--no-asr-fallback` to disable step 4.
 ## Notes
 
 - First transcription loads model weights from Hugging Face (set `HF_TOKEN` if rate-limited).
-- Forced aligner timestamps are on by default; pass `--no-aligner` to the server for text-only.
+- Forced aligner timestamps are on by default; use `python scripts/bootstrap_qwen_asr_fallback.py --no-aligner` for text-only (more reliable on Apple Silicon MPS).
 - Expect **slow** inference on CPU; MPS is faster on Apple Silicon but still much slower than CUDA vLLM.
 
-See [workers/README.md](../README.md) for the HTTP contract.
+See [workers/README.md](../../../../workers/README.md) for the HTTP contract.

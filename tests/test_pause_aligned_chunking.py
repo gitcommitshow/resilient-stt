@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from core.chunking import (
+from resilient_stt.core.chunking import (
     compute_pause_aligned_boundaries,
     plan_chunks_pause_aligned,
 )
-from core.schema import SpeechRegion
+from resilient_stt.core.schema import SpeechRegion
 
 SAMPLE_RATE = 16000
 

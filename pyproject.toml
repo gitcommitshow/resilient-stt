@@ -4,13 +4,29 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "resilient-stt"
-version = "0.1.0"
-description = "Local STT orchestrator for English/Hindi/Hinglish with external OpenAI-compatible ASR, pyannote diarization, and LLM transcript repair."
+version = "0.3.2"
+description = "Speech-To-Text pipeline supporting all OpenAI-compatible Automatic Speech Recognition providers with added resilience and metadata through LLM-powered transcript repair, audio preprocessing, vad, and pyannote diarization"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
-authors = [{ name = "resilient-stt" }]
+authors = [{ name = "gitcommitshow" }]
+keywords = [
+    "speech-to-text",
+    "asr",
+    "transcription",
+    "diarization",
+    "openai",
+    "hinglish",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
 dependencies = [
     "pydantic>=2.6,<3",
     "httpx>=0.27,<1",
@@ -19,6 +35,12 @@ dependencies = [
     "webrtcvad>=2.0.10",
     "python-dotenv>=1.0,<2",
 ]
+
+[project.urls]
+Homepage = "https://github.com/gitcommitshow/resilient-stt"
+Repository = "https://github.com/gitcommitshow/resilient-stt"
+Documentation = "https://github.com/gitcommitshow/resilient-stt/blob/main/README.md"
+Issues = "https://github.com/gitcommitshow/resilient-stt/issues"
 
 [project.optional-dependencies]
 # pyannote.audio 4.x requires torch>=2.8. Apple Silicon: Metal MPS (see README).
@@ -43,19 +65,11 @@ full = [
 ]
 
 [project.scripts]
-resilient-stt = "orchestrator.main:cli"
+resilient-stt = "resilient_stt.orchestrator.main:cli"
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = [
-    "orchestrator*",
-    "core*",
-    "asr*",
-    "diarization*",
-    "alignment*",
-    "repair*",
-]
-exclude = ["tests*", "data*", "workers*"]
+where = ["src"]
+include = ["resilient_stt*"]
 
 [tool.uv]
 # Resolve only for platforms we support for diarization (avoids unsatisfiable darwin/x86_64 splits).
@@ -67,4 +81,5 @@ environments = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 addopts = "-ra"

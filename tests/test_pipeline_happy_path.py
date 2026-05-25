@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from asr.normalizer import normalize_response
-from core.schema import ChunkMeta, DiarizationTurn
-from core.stitching import stitch_results
-from core.timestamps import to_global_time
-from diarization.speaker_assignment import assign_speakers
+from resilient_stt.asr.normalizer import normalize_response
+from resilient_stt.core.schema import ChunkMeta, DiarizationTurn
+from resilient_stt.core.stitching import stitch_results
+from resilient_stt.core.timestamps import to_global_time
+from resilient_stt.diarization.speaker_assignment import assign_speakers
 
 
 def test_normalize_stitch_and_assign_speakers() -> None:

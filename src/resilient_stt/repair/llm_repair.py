@@ -13,7 +13,7 @@ from typing import Any, Iterable
 
 import httpx
 
-from core.schema import TranscriptSegment
+from resilient_stt.core.schema import TranscriptSegment
 
 from .repair_prompts import (
     PASS1_INSTRUCTION,

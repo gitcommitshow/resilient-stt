@@ -10,7 +10,7 @@ from __future__ import annotations
 import abc
 from pathlib import Path
 
-from core.schema import TranscriptSegment
+from resilient_stt.core.schema import TranscriptSegment
 
 
 class AlignmentProvider(abc.ABC):

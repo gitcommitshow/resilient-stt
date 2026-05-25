@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from core.audio import build_enhance_audio_filter, normalize_audio
+from resilient_stt.core.audio import build_enhance_audio_filter, normalize_audio
 
 
 def test_build_enhance_audio_filter_includes_denoise_chain() -> None:
@@ -23,8 +23,8 @@ def test_normalize_audio_passes_af_when_enhance_enabled(tmp_path: Path) -> None:
     src.write_bytes(b"fake")
 
     proc = MagicMock(returncode=0, stderr="")
-    with patch("core.audio._require_ffmpeg", return_value="/usr/bin/ffmpeg"):
-        with patch("core.audio.subprocess.run", return_value=proc) as run:
+    with patch("resilient_stt.core.audio._require_ffmpeg", return_value="/usr/bin/ffmpeg"):
+        with patch("resilient_stt.core.audio.subprocess.run", return_value=proc) as run:
             normalize_audio(src, dst, enhance_audio=True)
 
     cmd = run.call_args.args[0]
